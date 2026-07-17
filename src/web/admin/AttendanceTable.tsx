@@ -6,7 +6,7 @@ import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
-  absent: "Absent",
+  absent: "Not clocked in",
   leave: "Leave",
 };
 
@@ -140,7 +140,7 @@ export function AttendanceTable() {
           <span className="hm-swatch present" /> Present
         </span>
         <span className="hm-legend-item">
-          <span className="hm-swatch absent" /> Absent
+          <span className="hm-swatch absent" /> Not clocked in
         </span>
         <span className="hm-legend-item">
           <span className="hm-swatch leave" /> Leave

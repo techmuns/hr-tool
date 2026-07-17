@@ -315,6 +315,7 @@ tbody tr:last-child td {
   border-radius: 50%;
 }
 
+/* green: present + approved/paid leave requests */
 .tag-present,
 .tag-approved,
 .tag-paid {
@@ -327,34 +328,36 @@ tbody tr:last-child td {
   background: var(--present);
 }
 
-.tag-absent,
+/* red: attendance leave + rejected/unpaid leave requests */
+.tag-leave,
 .tag-rejected,
 .tag-unpaid {
   background: var(--absent-soft);
   color: var(--absent);
 }
-.tag-absent::before,
+.tag-leave::before,
 .tag-rejected::before,
 .tag-unpaid::before {
   background: var(--absent);
 }
 
-.tag-leave,
+/* yellow: not-clocked-in (absent) + pending leave requests */
+.tag-absent,
 .tag-pending {
   background: var(--leave-soft);
   color: #b07d00;
 }
-:root[data-theme="dark"] .tag-leave,
+:root[data-theme="dark"] .tag-absent,
 :root[data-theme="dark"] .tag-pending {
   color: var(--leave);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .tag-leave,
+  :root:not([data-theme="light"]) .tag-absent,
   :root:not([data-theme="light"]) .tag-pending {
     color: var(--leave);
   }
 }
-.tag-leave::before,
+.tag-absent::before,
 .tag-pending::before {
   background: var(--leave);
 }
@@ -573,28 +576,30 @@ thead .hm-name {
   color: var(--present);
 }
 
+/* "Not clocked in" (absent status) = yellow */
 .hm-cell.absent {
-  background: var(--absent-soft);
-  box-shadow: inset 3px 0 0 var(--absent);
-}
-.hm-cell.absent .hm-status-label {
-  color: var(--absent);
-}
-
-.hm-cell.leave {
   background: var(--leave-soft);
   box-shadow: inset 3px 0 0 var(--leave);
 }
-.hm-cell.leave .hm-status-label {
+.hm-cell.absent .hm-status-label {
   color: #a06f00;
 }
-:root[data-theme="dark"] .hm-cell.leave .hm-status-label {
+:root[data-theme="dark"] .hm-cell.absent .hm-status-label {
   color: var(--leave);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .hm-cell.leave .hm-status-label {
+  :root:not([data-theme="light"]) .hm-cell.absent .hm-status-label {
     color: var(--leave);
   }
+}
+
+/* Leave = red */
+.hm-cell.leave {
+  background: var(--absent-soft);
+  box-shadow: inset 3px 0 0 var(--absent);
+}
+.hm-cell.leave .hm-status-label {
+  color: var(--absent);
 }
 
 .hm-cell.empty {
@@ -633,10 +638,10 @@ thead .hm-name {
   background: var(--present);
 }
 .hm-swatch.absent {
-  background: var(--absent);
+  background: var(--leave);
 }
 .hm-swatch.leave {
-  background: var(--leave);
+  background: var(--absent);
 }
 .hm-swatch.empty {
   background: var(--surface-2);
