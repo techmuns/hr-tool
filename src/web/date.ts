@@ -18,3 +18,45 @@ export function formatDate(iso: string): string {
 export function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
+
+export interface MonthOption {
+  value: string; // "YYYY-MM"
+  label: string; // "July 2026"
+}
+
+/** Recent months, newest first, for the attendance month picker. */
+export function recentMonths(count = 12): MonthOption[] {
+  const now = new Date();
+  const options: MonthOption[] = [];
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = d.toLocaleDateString([], { month: "long", year: "numeric" });
+    options.push({ value, label });
+  }
+  return options;
+}
+
+/**
+ * The day-of-month numbers to render for a "YYYY-MM" month, oldest→newest.
+ * For the current month we stop at today (days "generate" up to now); for a
+ * past month we show every day.
+ */
+export function daysForMonth(month: string): number[] {
+  const [year, mon] = month.split("-").map(Number);
+  const now = new Date();
+  const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth() + 1;
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const last = isCurrentMonth ? Math.min(now.getDate(), daysInMonth) : daysInMonth;
+  return Array.from({ length: last }, (_, i) => i + 1);
+}
+
+export function dayKey(month: string, day: number): string {
+  return `${month}-${String(day).padStart(2, "0")}`;
+}
+
+export function isToday(month: string, day: number): boolean {
+  const now = new Date();
+  const value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return month === value && day === now.getDate();
+}

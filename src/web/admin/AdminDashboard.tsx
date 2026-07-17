@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Nav } from "../components/Nav";
 import { Button } from "../components/ui/Button";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { EmployeeStatusEditor } from "./EmployeeStatusEditor";
 import { Payroll } from "./Payroll";
@@ -24,8 +25,9 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
     <div className="app-shell">
       <div className="topbar">
         <h1>HR Tool — Admin</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="topbar-actions">
           <span className="who">HR view</span>
+          <ThemeToggle />
           <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { api } from "../api";
 import { setSession } from "../session";
 import type { Employee, EmployeeRole } from "../types";
 import { Button } from "./ui/Button";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [text, setText] = useState("");
@@ -27,6 +28,9 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   return (
     <div className="login-shell">
       <div className="login-card">
+        <div className="login-top">
+          <ThemeToggle />
+        </div>
         <h1>HR Tool</h1>
         <p className="muted">Type "admin" or "employee" to continue.</p>
         <form onSubmit={submit}>

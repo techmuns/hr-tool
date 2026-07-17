@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Nav } from "../components/Nav";
 import { Button } from "../components/ui/Button";
+import { ThemeToggle } from "../components/ThemeToggle";
 import { ClockCard } from "./ClockCard";
 import { WorkingDays } from "./WorkingDays";
 import { Profile } from "./Profile";
@@ -23,8 +24,9 @@ export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
     <div className="app-shell">
       <div className="topbar">
         <h1>HR Tool — Employee</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="topbar-actions">
           <span className="who">Employee view</span>
+          <ThemeToggle />
           <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>
