@@ -17,7 +17,7 @@
     {
       "binding": "DB",
       "database_name": "hr-tool-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "4926875e-43fb-485d-81e6-65cb2b3c00f9",
       "migrations_dir": "migrations"
     }
   ],
