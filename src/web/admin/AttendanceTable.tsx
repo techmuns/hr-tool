@@ -1,20 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
-import { currentMonth, dayKey, daysForMonth, isToday, recentMonths } from "../date";
+import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths } from "../date";
 import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
   absent: "Absent",
-  leave: "On leave",
+  leave: "Leave",
 };
 
-const STATUS_MARK: Record<AttendanceStatus, string> = {
-  present: "P",
-  absent: "A",
-  leave: "L",
-};
+interface DayCell {
+  status: AttendanceStatus;
+  clock_in: string | null;
+  clock_out: string | null;
+}
 
 export function AttendanceTable() {
   const [month, setMonth] = useState(currentMonth());
@@ -38,12 +38,16 @@ export function AttendanceTable() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, [month]);
 
-  // status lookup: employee_id -> "YYYY-MM-DD" -> status
+  // employee_id -> "YYYY-MM-DD" -> cell
   const byEmployee = useMemo(() => {
-    const map = new Map<number, Map<string, AttendanceStatus>>();
+    const map = new Map<number, Map<string, DayCell>>();
     for (const row of attendance) {
       if (!map.has(row.employee_id)) map.set(row.employee_id, new Map());
-      map.get(row.employee_id)!.set(row.work_date, row.status);
+      map.get(row.employee_id)!.set(row.work_date, {
+        status: row.status,
+        clock_in: row.clock_in,
+        clock_out: row.clock_out,
+      });
     }
     return map;
   }, [attendance]);
@@ -88,15 +92,33 @@ export function AttendanceTable() {
                 <tr key={emp.id} className="hm-row-band">
                   <td className="hm-name">{emp.name}</td>
                   {days.map((day) => {
-                    const status = dayMap?.get(dayKey(month, day));
-                    const cls = status ?? "empty";
-                    const title = status
-                      ? `${emp.name} — ${dayKey(month, day)}: ${STATUS_LABEL[status]}`
+                    const cell = dayMap?.get(dayKey(month, day));
+                    const cls = cell?.status ?? "empty";
+                    const title = cell
+                      ? `${emp.name} — ${dayKey(month, day)}: ${STATUS_LABEL[cell.status]}`
                       : `${emp.name} — ${dayKey(month, day)}: no record`;
                     return (
                       <td key={day}>
                         <div className={`hm-cell ${cls}`} title={title}>
-                          {status ? STATUS_MARK[status] : ""}
+                          {cell ? (
+                            <>
+                              <span className="hm-status-label">{STATUS_LABEL[cell.status]}</span>
+                              {cell.status === "present" ? (
+                                <span className="hm-times">
+                                  <span>
+                                    <b>in</b>
+                                    {formatTime(cell.clock_in)}
+                                  </span>
+                                  <span>
+                                    <b>out</b>
+                                    {formatTime(cell.clock_out)}
+                                  </span>
+                                </span>
+                              ) : (
+                                <span className="hm-times hm-noclock">no clock</span>
+                              )}
+                            </>
+                          ) : null}
                         </div>
                       </td>
                     );
@@ -115,13 +137,13 @@ export function AttendanceTable() {
 
       <div className="hm-legend">
         <span className="hm-legend-item">
-          <span className="hm-swatch present">P</span> Present
+          <span className="hm-swatch present" /> Present
         </span>
         <span className="hm-legend-item">
-          <span className="hm-swatch absent">A</span> Absent
+          <span className="hm-swatch absent" /> Absent
         </span>
         <span className="hm-legend-item">
-          <span className="hm-swatch leave">L</span> On leave
+          <span className="hm-swatch leave" /> Leave
         </span>
         <span className="hm-legend-item">
           <span className="hm-swatch empty" /> No record
