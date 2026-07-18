@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
-import type { Employee, LeaveRequest, Payroll, Reimbursement, WorkMode } from "../types";
+import type { Employee, EmployeeWithTeam, LeaveRequest, Payroll, Reimbursement, WorkMode } from "../types";
 
 const app = new Hono<AppEnv>();
 
@@ -29,7 +29,11 @@ app.patch("/me", async (c) => {
 });
 
 app.get("/employees", requireAdmin, async (c) => {
-  const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
+  const employees = await c.env.DB.prepare(
+    `SELECT e.*, t.name AS team_name FROM employees e
+     LEFT JOIN teams t ON t.id = e.team_id
+     ORDER BY e.id`
+  ).all<EmployeeWithTeam>();
   return c.json(employees.results);
 });
 
@@ -103,10 +107,18 @@ interface EmployeeWriteBody {
   work_mode?: WorkMode;
   date_of_joining?: string;
   monthly_salary?: number;
+  team_id?: number | null;
+  job_title?: string;
 }
 
 function normalizeWorkMode(value: unknown, fallback: WorkMode): WorkMode {
   return value === "wfh" || value === "in-office" ? value : fallback;
+}
+
+function normalizeTeamId(value: unknown, fallback: number | null): number | null {
+  if (value === null) return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return fallback;
 }
 
 app.post("/employees", requireAdmin, async (c) => {
@@ -124,12 +136,14 @@ app.post("/employees", requireAdmin, async (c) => {
       : new Date().toISOString().slice(0, 10);
   const monthly_salary =
     typeof body.monthly_salary === "number" && Number.isFinite(body.monthly_salary) ? body.monthly_salary : 0;
+  const team_id = normalizeTeamId(body.team_id, null);
+  const job_title = typeof body.job_title === "string" ? body.job_title.trim() : "";
 
   const result = await c.env.DB.prepare(
-    `INSERT INTO employees (name, email, location, work_mode, date_of_joining, role, monthly_salary)
-     VALUES (?, ?, ?, ?, ?, 'employee', ?)`
+    `INSERT INTO employees (name, email, location, work_mode, date_of_joining, role, monthly_salary, team_id, job_title)
+     VALUES (?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
   )
-    .bind(name, email, location, work_mode, date_of_joining, monthly_salary)
+    .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title)
     .run();
 
   const created = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
@@ -155,11 +169,14 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
     typeof body.monthly_salary === "number" && Number.isFinite(body.monthly_salary)
       ? body.monthly_salary
       : existing.monthly_salary;
+  const team_id = normalizeTeamId(body.team_id, existing.team_id);
+  const job_title = typeof body.job_title === "string" ? body.job_title.trim() : existing.job_title;
 
   await c.env.DB.prepare(
-    "UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, date_of_joining = ?, monthly_salary = ? WHERE id = ?"
+    `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, date_of_joining = ?,
+     monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
   )
-    .bind(name, email, location, work_mode, date_of_joining, monthly_salary, id)
+    .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title, id)
     .run();
 
   const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();

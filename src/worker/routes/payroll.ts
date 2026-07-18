@@ -51,12 +51,15 @@ app.get("/admin/payroll", async (c) => {
   }
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name FROM payroll p
+    `SELECT p.*, e.name AS employee_name,
+       COALESCE((SELECT SUM(r.amount) FROM reimbursements r
+                 WHERE r.employee_id = p.employee_id AND r.created_at LIKE ?), 0) AS reimbursements_total
+     FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`
   )
-    .bind(period)
+    .bind(`${period}%`, period)
     .all<PayrollWithName>();
 
   return c.json(rows.results);

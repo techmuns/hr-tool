@@ -4,7 +4,8 @@ import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
-import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, WorkMode } from "../types";
+import { TeamManager } from "./TeamManager";
+import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Team, WorkMode } from "../types";
 
 interface FormState {
   name: string;
@@ -13,6 +14,8 @@ interface FormState {
   work_mode: WorkMode;
   date_of_joining: string;
   salaryRupees: string;
+  team_id: number | null;
+  job_title: string;
 }
 
 const EMPTY_FORM: FormState = {
@@ -22,6 +25,8 @@ const EMPTY_FORM: FormState = {
   work_mode: "in-office",
   date_of_joining: "",
   salaryRupees: "",
+  team_id: null,
+  job_title: "",
 };
 
 function toForm(e: Employee): FormState {
@@ -32,6 +37,8 @@ function toForm(e: Employee): FormState {
     work_mode: e.work_mode,
     date_of_joining: e.date_of_joining,
     salaryRupees: (e.monthly_salary / 100).toFixed(2),
+    team_id: e.team_id,
+    job_title: e.job_title,
   };
 }
 
@@ -59,6 +66,15 @@ export function EmployeePanel({
   const [reimNote, setReimNote] = useState("");
   const [reimBusy, setReimBusy] = useState(false);
   const [removingReimId, setRemovingReimId] = useState<number | null>(null);
+
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [showTeamManager, setShowTeamManager] = useState(false);
+
+  function loadTeams() {
+    api.get<Team[]>("/admin/teams").then(setTeams).catch(() => {});
+  }
+
+  useEffect(loadTeams, []);
 
   function loadDetail() {
     if (isNew) return;
@@ -96,6 +112,8 @@ export function EmployeePanel({
       work_mode: form.work_mode,
       date_of_joining: form.date_of_joining,
       monthly_salary: Math.round((parseFloat(form.salaryRupees) || 0) * 100),
+      team_id: form.team_id,
+      job_title: form.job_title.trim(),
     };
     try {
       if (isNew) {
@@ -211,6 +229,36 @@ export function EmployeePanel({
                     onChange={(e) => set("date_of_joining", e.target.value)}
                   />
                   {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
+                </div>
+              </div>
+              <div className="row">
+                <div className="field">
+                  <label>Team</label>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <select
+                      value={form.team_id ?? ""}
+                      onChange={(e) => set("team_id", e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">No team</option>
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="button" onClick={() => setShowTeamManager(true)} title="Manage teams">
+                      Manage
+                    </Button>
+                  </div>
+                </div>
+                <div className="field">
+                  <label>Role</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Software Engineer"
+                    value={form.job_title}
+                    onChange={(e) => set("job_title", e.target.value)}
+                  />
                 </div>
               </div>
               <div className="field">
@@ -374,6 +422,14 @@ export function EmployeePanel({
           </div>
         </div>
       </aside>
+
+      {showTeamManager && (
+        <TeamManager
+          teams={teams}
+          onClose={() => setShowTeamManager(false)}
+          onChanged={loadTeams}
+        />
+      )}
     </>
   );
 }

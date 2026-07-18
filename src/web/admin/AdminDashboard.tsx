@@ -6,9 +6,11 @@ import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
+import { EmployeeDirectory } from "./EmployeeDirectory";
 
 const VIEWS = [
   { key: "attendance", label: "Attendance" },
+  { key: "employees", label: "Employees" },
   { key: "payroll", label: "Payroll" },
   { key: "feedback", label: "Feedback" },
   { key: "chat", label: "Chat" },
@@ -31,6 +33,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <Nav items={VIEWS} active={view} onSelect={setView} />
         <div className="content">
           {view === "attendance" && <AttendanceTable />}
+          {view === "employees" && <EmployeeDirectory />}
           {view === "payroll" && <Payroll />}
           {view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}

@@ -4,6 +4,7 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { currentMonth } from "../date";
 import { formatINR } from "../money";
+import { exportPayrollPdf } from "../pdf";
 import type { PayrollWithName } from "../types";
 
 export function Payroll() {
@@ -33,6 +34,9 @@ export function Payroll() {
           <Button variant="primary" disabled={loading} onClick={() => load(true)}>
             Generate
           </Button>
+          <Button disabled={rows.length === 0} onClick={() => exportPayrollPdf(period, rows)}>
+            Export PDF
+          </Button>
         </div>
       }
     >
@@ -42,6 +46,7 @@ export function Payroll() {
           <tr>
             <th>Employee</th>
             <th>Base Salary</th>
+            <th>Reimbursements</th>
             <th>Paid Days</th>
             <th>Unpaid Days</th>
             <th>Deductions</th>
@@ -53,6 +58,7 @@ export function Payroll() {
             <tr key={row.id}>
               <td>{row.employee_name}</td>
               <td>{formatINR(row.base_salary)}</td>
+              <td>{formatINR(row.reimbursements_total)}</td>
               <td>{row.paid_days}</td>
               <td>{row.unpaid_days}</td>
               <td>{formatINR(row.deductions)}</td>
@@ -61,7 +67,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 No payroll for this period yet. Click Generate.
               </td>
             </tr>

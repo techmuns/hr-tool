@@ -15,6 +15,12 @@ export interface Employee {
   role: EmployeeRole;
   monthly_salary: number;
   created_at: string;
+  team_id: number | null;
+  job_title: string;
+}
+
+export interface EmployeeWithTeam extends Employee {
+  team_name: string | null;
 }
 
 export interface EmployeeDetail {
@@ -22,6 +28,12 @@ export interface EmployeeDetail {
   leaves: LeaveRequest[];
   payroll: Payroll[];
   reimbursements: Reimbursement[];
+}
+
+export interface Team {
+  id: number;
+  name: string;
+  created_at: string;
 }
 
 export interface Reimbursement {
@@ -93,4 +105,5 @@ export interface Payroll {
 
 export interface PayrollWithName extends Payroll {
   employee_name: string;
+  reimbursements_total: number;
 }

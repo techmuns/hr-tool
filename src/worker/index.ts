@@ -7,6 +7,7 @@ import leaveRoutes from "./routes/leave";
 import feedbackRoutes from "./routes/feedback";
 import chatRoutes from "./routes/chat";
 import payrollRoutes from "./routes/payroll";
+import teamRoutes from "./routes/teams";
 
 const app = new Hono<AppEnv>();
 
@@ -17,6 +18,7 @@ app.route("/api", leaveRoutes);
 app.route("/api", feedbackRoutes);
 app.route("/api", chatRoutes);
 app.route("/api", payrollRoutes);
+app.route("/api", teamRoutes);
 
 app.get("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
