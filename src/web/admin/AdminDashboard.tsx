@@ -4,14 +4,12 @@ import { Button } from "../components/ui/Button";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
-import { LeaveRequests } from "./LeaveRequests";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 
 const VIEWS = [
   { key: "attendance", label: "Attendance" },
   { key: "payroll", label: "Payroll" },
-  { key: "leave", label: "Leave Requests" },
   { key: "feedback", label: "Feedback" },
   { key: "chat", label: "Chat" },
 ];
@@ -34,7 +32,6 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="content">
           {view === "attendance" && <AttendanceTable />}
           {view === "payroll" && <Payroll />}
-          {view === "leave" && <LeaveRequests />}
           {view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}
         </div>
