@@ -835,3 +835,22 @@ thead .hm-name {
   justify-content: flex-end;
   gap: 8px;
 }
+
+.row-remove-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.row-remove-btn:hover:not(:disabled) {
+  color: var(--absent);
+  background: var(--absent-soft);
+}
+.row-remove-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

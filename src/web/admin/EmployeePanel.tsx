@@ -58,6 +58,7 @@ export function EmployeePanel({
   const [reimAmount, setReimAmount] = useState("");
   const [reimNote, setReimNote] = useState("");
   const [reimBusy, setReimBusy] = useState(false);
+  const [removingReimId, setRemovingReimId] = useState<number | null>(null);
 
   function loadDetail() {
     if (isNew) return;
@@ -124,6 +125,20 @@ export function EmployeePanel({
       setError(err instanceof Error ? err.message : "Failed to remove");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function removeReimbursement(id: number) {
+    if (!window.confirm("Remove this reimbursement?")) return;
+    setRemovingReimId(id);
+    setError(null);
+    try {
+      await api.del(`/admin/reimbursements/${id}`);
+      setReimbursements((rows) => rows.filter((r) => r.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove reimbursement");
+    } finally {
+      setRemovingReimId(null);
     }
   }
 
@@ -258,6 +273,7 @@ export function EmployeePanel({
                           <th>Date</th>
                           <th>Note</th>
                           <th>Amount</th>
+                          <th></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -266,6 +282,17 @@ export function EmployeePanel({
                             <td>{formatDate(r.created_at)}</td>
                             <td>{r.note || <span className="muted">—</span>}</td>
                             <td>{formatINR(r.amount)}</td>
+                            <td>
+                              <button
+                                type="button"
+                                className="row-remove-btn"
+                                title="Remove reimbursement"
+                                disabled={removingReimId === r.id}
+                                onClick={() => removeReimbursement(r.id)}
+                              >
+                                ✕
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>

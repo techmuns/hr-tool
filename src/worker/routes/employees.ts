@@ -87,6 +87,15 @@ app.post("/admin/employees/:id/reimbursements", requireAdmin, async (c) => {
   return c.json(created, 201);
 });
 
+app.delete("/admin/reimbursements/:id", requireAdmin, async (c) => {
+  const id = Number(c.req.param("id"));
+  const existing = await c.env.DB.prepare("SELECT id FROM reimbursements WHERE id = ?").bind(id).first();
+  if (!existing) return c.json({ error: "Reimbursement not found" }, 404);
+
+  await c.env.DB.prepare("DELETE FROM reimbursements WHERE id = ?").bind(id).run();
+  return c.json({ ok: true });
+});
+
 interface EmployeeWriteBody {
   name?: string;
   email?: string;
