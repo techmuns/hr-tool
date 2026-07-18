@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
-import type { Employee, LeaveRequest, Payroll, WorkMode } from "../types";
+import type { Employee, LeaveRequest, Payroll, Reimbursement, WorkMode } from "../types";
 
 const app = new Hono<AppEnv>();
 
@@ -33,7 +33,7 @@ app.get("/employees", requireAdmin, async (c) => {
   return c.json(employees.results);
 });
 
-// Full profile for one employee: their record plus leaves and payroll history.
+// Full profile for one employee: their record plus leaves, payroll, and reimbursement history.
 app.get("/admin/employees/:id/detail", requireAdmin, async (c) => {
   const id = Number(c.req.param("id"));
   const employee = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
@@ -47,8 +47,44 @@ app.get("/admin/employees/:id/detail", requireAdmin, async (c) => {
   const payroll = await c.env.DB.prepare("SELECT * FROM payroll WHERE employee_id = ? ORDER BY period DESC")
     .bind(id)
     .all<Payroll>();
+  const reimbursements = await c.env.DB.prepare(
+    "SELECT * FROM reimbursements WHERE employee_id = ? ORDER BY created_at DESC"
+  )
+    .bind(id)
+    .all<Reimbursement>();
 
-  return c.json({ employee, leaves: leaves.results, payroll: payroll.results });
+  return c.json({
+    employee,
+    leaves: leaves.results,
+    payroll: payroll.results,
+    reimbursements: reimbursements.results,
+  });
+});
+
+app.post("/admin/employees/:id/reimbursements", requireAdmin, async (c) => {
+  const id = Number(c.req.param("id"));
+  const employee = await c.env.DB.prepare("SELECT id FROM employees WHERE id = ?").bind(id).first();
+  if (!employee) return c.json({ error: "Employee not found" }, 404);
+
+  const body = await c
+    .req.json<{ amount?: number; note?: string }>()
+    .catch(() => ({}) as { amount?: number; note?: string });
+
+  if (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
+    return c.json({ error: "amount must be a positive number" }, 400);
+  }
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+
+  const result = await c.env.DB.prepare(
+    "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
+  )
+    .bind(id, Math.round(body.amount), note)
+    .run();
+
+  const created = await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
+    .bind(result.meta.last_row_id)
+    .first<Reimbursement>();
+  return c.json(created, 201);
 });
 
 interface EmployeeWriteBody {

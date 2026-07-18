@@ -16,4 +16,5 @@ export type {
   ChatMessage,
   Payroll,
   PayrollWithName,
+  Reimbursement,
 } from "../worker/types";

@@ -60,3 +60,23 @@ export function isToday(month: string, day: number): boolean {
   const value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   return month === value && day === now.getDate();
 }
+
+/** Human-readable tenure from a "YYYY-MM-DD" join date to today, e.g. "2 yrs 5 mos". */
+export function tenure(dateOfJoining: string): string {
+  const start = new Date(dateOfJoining);
+  if (Number.isNaN(start.getTime())) return "—";
+
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if (now.getDate() < start.getDate()) months -= 1;
+  months = Math.max(months, 0);
+
+  const years = Math.floor(months / 12);
+  const remMonths = months % 12;
+
+  if (years === 0 && remMonths === 0) return "Joined this month";
+  const parts: string[] = [];
+  if (years > 0) parts.push(`${years} yr${years === 1 ? "" : "s"}`);
+  if (remMonths > 0) parts.push(`${remMonths} mo${remMonths === 1 ? "" : "s"}`);
+  return parts.join(" ");
+}

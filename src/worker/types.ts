@@ -21,6 +21,15 @@ export interface EmployeeDetail {
   employee: Employee;
   leaves: LeaveRequest[];
   payroll: Payroll[];
+  reimbursements: Reimbursement[];
+}
+
+export interface Reimbursement {
+  id: number;
+  employee_id: number;
+  amount: number;
+  note: string;
+  created_at: string;
 }
 
 export interface Attendance {

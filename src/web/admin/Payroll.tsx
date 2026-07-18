@@ -3,11 +3,8 @@ import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { currentMonth } from "../date";
+import { formatINR } from "../money";
 import type { PayrollWithName } from "../types";
-
-function formatMoney(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 export function Payroll() {
   const [period, setPeriod] = useState(currentMonth());
@@ -55,11 +52,11 @@ export function Payroll() {
           {rows.map((row) => (
             <tr key={row.id}>
               <td>{row.employee_name}</td>
-              <td>{formatMoney(row.base_salary)}</td>
+              <td>{formatINR(row.base_salary)}</td>
               <td>{row.paid_days}</td>
               <td>{row.unpaid_days}</td>
-              <td>{formatMoney(row.deductions)}</td>
-              <td>{formatMoney(row.net_pay)}</td>
+              <td>{formatINR(row.deductions)}</td>
+              <td>{formatINR(row.net_pay)}</td>
             </tr>
           ))}
           {rows.length === 0 && (
