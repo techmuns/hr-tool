@@ -8,12 +8,19 @@ export type SenderRole = "employee" | "admin";
 export interface Employee {
   id: number;
   name: string;
+  email: string;
   location: string;
   work_mode: WorkMode;
   date_of_joining: string;
   role: EmployeeRole;
   monthly_salary: number;
   created_at: string;
+}
+
+export interface EmployeeDetail {
+  employee: Employee;
+  leaves: LeaveRequest[];
+  payroll: Payroll[];
 }
 
 export interface Attendance {

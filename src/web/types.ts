@@ -6,6 +6,7 @@ export type {
   LeaveStatus,
   SenderRole,
   Employee,
+  EmployeeDetail,
   Attendance,
   AttendanceWithName,
   LeaveRequest,

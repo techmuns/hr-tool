@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
 import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths } from "../date";
 import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
+import { EmployeePanel } from "./EmployeePanel";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
@@ -33,6 +35,7 @@ export function AttendanceTable() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [saving, setSaving] = useState(false);
+  const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const months = useMemo(() => recentMonths(12), []);
@@ -109,18 +112,23 @@ export function AttendanceTable() {
     <Card
       title="Attendance"
       actions={
-        <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: "auto" }}>
-          {months.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: "auto" }}>
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <Button variant="primary" onClick={() => setPanelTarget("new")}>
+            + Add employee
+          </Button>
+        </div>
       }
     >
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Click any cell to mark an employee present, not clocked in, or on leave.
+        Click a name to view or edit that employee. Click any cell to mark them present, not clocked in, or on leave.
       </p>
 
       <div className="heatmap-scroll" ref={scrollRef}>
@@ -140,7 +148,11 @@ export function AttendanceTable() {
               const dayMap = byEmployee.get(emp.id);
               return (
                 <tr key={emp.id} className="hm-row-band">
-                  <td className="hm-name">{emp.name}</td>
+                  <td className="hm-name">
+                    <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
+                      {emp.name}
+                    </button>
+                  </td>
                   {days.map((day) => {
                     const cell = dayMap?.get(dayKey(month, day)) ?? null;
                     const cls = cell?.status ?? "empty";
@@ -229,6 +241,10 @@ export function AttendanceTable() {
             ))}
           </div>
         </>
+      )}
+
+      {panelTarget !== null && (
+        <EmployeePanel target={panelTarget} onClose={() => setPanelTarget(null)} onChanged={load} />
       )}
     </Card>
   );
