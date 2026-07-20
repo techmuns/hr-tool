@@ -10,15 +10,13 @@ import { FeedbackForm } from "./FeedbackForm";
 import { Chat } from "./Chat";
 
 const VIEWS = [
-  { key: "attendance", label: "Attendance" },
-  { key: "profile", label: "Profile" },
-  { key: "leave", label: "Apply for Leave" },
+  { key: "home", label: "Home" },
   { key: "feedback", label: "Feedback" },
   { key: "chat", label: "Chat with HR" },
 ];
 
 export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
-  const [view, setView] = useState("attendance");
+  const [view, setView] = useState("home");
 
   return (
     <div className="app-shell">
@@ -33,14 +31,14 @@ export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
       <div className="layout">
         <Nav items={VIEWS} active={view} onSelect={setView} />
         <div className="content">
-          {view === "attendance" && (
+          {view === "home" && (
             <>
               <ClockCard />
               <WorkingDays />
+              <Profile />
+              <LeaveForm />
             </>
           )}
-          {view === "profile" && <Profile />}
-          {view === "leave" && <LeaveForm />}
           {view === "feedback" && <FeedbackForm />}
           {view === "chat" && <Chat />}
         </div>
