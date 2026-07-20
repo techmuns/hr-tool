@@ -6,6 +6,7 @@ import { ClockCard } from "./ClockCard";
 import { WorkingDays } from "./WorkingDays";
 import { Profile } from "./Profile";
 import { LeaveForm } from "./LeaveForm";
+import { ReimbursementRequest } from "./ReimbursementRequest";
 import { FeedbackForm } from "./FeedbackForm";
 import { Chat } from "./Chat";
 
@@ -17,6 +18,7 @@ const VIEWS = [
 
 export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
   const [view, setView] = useState("home");
+  const [attendanceRefresh, setAttendanceRefresh] = useState(0);
 
   return (
     <div className="app-shell">
@@ -33,10 +35,11 @@ export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="content">
           {view === "home" && (
             <>
-              <ClockCard />
-              <WorkingDays />
+              <ClockCard onChange={() => setAttendanceRefresh((n) => n + 1)} />
+              <WorkingDays refreshSignal={attendanceRefresh} />
               <Profile />
-              <LeaveForm />
+              <LeaveForm onMarked={() => setAttendanceRefresh((n) => n + 1)} />
+              <ReimbursementRequest />
             </>
           )}
           {view === "feedback" && <FeedbackForm />}

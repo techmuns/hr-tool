@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths } from "../date";
+import { scrollToToday } from "../scrollToToday";
 import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
 
@@ -71,10 +72,9 @@ export function AttendanceTable() {
     return map;
   }, [attendance]);
 
-  // keep the latest day (right edge) in view whenever the grid changes
+  // keep today's column in view whenever the grid changes
   useEffect(() => {
-    const el = scrollRef.current;
-    if (el) el.scrollLeft = el.scrollWidth;
+    scrollToToday(scrollRef.current);
   }, [days, employees]);
 
   function openEditor(e: React.MouseEvent, employee: Employee, day: number, cell: DayCell | null) {

@@ -7,25 +7,49 @@ const app = new Hono<AppEnv>();
 
 app.use("*", requireEmployee);
 
-app.get("/me", (c) => {
-  return c.json(c.get("employee"));
+app.get("/me", async (c) => {
+  const employee = c.get("employee");
+  const withTeam = await c.env.DB.prepare(
+    `SELECT e.*, t.name AS team_name FROM employees e
+     LEFT JOIN teams t ON t.id = e.team_id
+     WHERE e.id = ?`
+  )
+    .bind(employee.id)
+    .first<EmployeeWithTeam>();
+  return c.json(withTeam);
 });
 
-app.patch("/me", async (c) => {
+app.get("/reimbursements/me", async (c) => {
+  const employee = c.get("employee");
+  const rows = await c.env.DB.prepare(
+    "SELECT * FROM reimbursements WHERE employee_id = ? ORDER BY created_at DESC"
+  )
+    .bind(employee.id)
+    .all<Reimbursement>();
+  return c.json(rows.results);
+});
+
+app.post("/reimbursements", async (c) => {
   const employee = c.get("employee");
   const body = await c
-    .req.json<{ name?: string; location?: string }>()
-    .catch(() => ({}) as { name?: string; location?: string });
+    .req.json<{ amount?: number; note?: string }>()
+    .catch(() => ({}) as { amount?: number; note?: string });
 
-  const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : employee.name;
-  const location = typeof body.location === "string" ? body.location.trim() : employee.location;
+  if (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
+    return c.json({ error: "amount must be a positive number" }, 400);
+  }
+  const note = typeof body.note === "string" ? body.note.trim() : "";
 
-  await c.env.DB.prepare("UPDATE employees SET name = ?, location = ? WHERE id = ?")
-    .bind(name, location, employee.id)
+  const result = await c.env.DB.prepare(
+    "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
+  )
+    .bind(employee.id, Math.round(body.amount), note)
     .run();
 
-  const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(employee.id).first<Employee>();
-  return c.json(updated);
+  const created = await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
+    .bind(result.meta.last_row_id)
+    .first<Reimbursement>();
+  return c.json(created, 201);
 });
 
 app.get("/employees", requireAdmin, async (c) => {

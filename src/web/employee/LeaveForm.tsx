@@ -6,14 +6,19 @@ import { Tag } from "../components/ui/Tag";
 import { formatDate } from "../date";
 import type { LeaveRequest, LeaveType } from "../types";
 
-export function LeaveForm() {
+interface MarkLeaveResponse {
+  leave: LeaveRequest;
+  dates: string[];
+}
+
+export function LeaveForm({ onMarked }: { onMarked?: () => void }) {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [days, setDays] = useState("1");
   const [leaveType, setLeaveType] = useState<LeaveType>("paid");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<string | null>(null);
 
   function load() {
     api.get<LeaveRequest[]>("/leave/me").then(setRequests).catch(() => {});
@@ -23,36 +28,47 @@ export function LeaveForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!startDate || !endDate) {
-      setError("Start and end date are required");
+    const n = Math.trunc(Number(days));
+    if (!Number.isFinite(n) || n < 1) {
+      setError("Enter a number of days of 1 or more");
       return;
     }
     setSubmitting(true);
     setError(null);
+    setConfirmation(null);
     try {
-      await api.post("/leave", { start_date: startDate, end_date: endDate, leave_type: leaveType, reason });
-      setStartDate("");
-      setEndDate("");
+      const res = await api.post<MarkLeaveResponse>("/leave", { days: n, leave_type: leaveType, reason });
+      const first = formatDate(res.dates[0]);
+      const last = formatDate(res.dates[res.dates.length - 1]);
+      setConfirmation(
+        res.dates.length === 1 ? `Marked ${first} as leave.` : `Marked ${first} – ${last} (${res.dates.length} days) as leave.`
+      );
       setReason("");
       load();
+      onMarked?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to submit");
+      setError(err instanceof Error ? err.message : "Failed to mark leave");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Card title="Apply for Leave">
+    <Card title="Mark Leave">
+      <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+        Marks the next N business days, starting today, as leave — weekends are skipped automatically.
+      </p>
       <form onSubmit={submit}>
         <div className="row">
           <div className="field">
-            <label>Start Date</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
-          <div className="field">
-            <label>End Date</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <label>Number of days</label>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+            />
           </div>
           <div className="field">
             <label>Type</label>
@@ -67,12 +83,13 @@ export function LeaveForm() {
           <textarea rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
         </div>
         <Button type="submit" variant="primary" disabled={submitting}>
-          {submitting ? "Submitting…" : "Submit Request"}
+          {submitting ? "Marking…" : "Mark Leave"}
         </Button>
+        {confirmation && <span className="muted" style={{ marginLeft: 10 }}>{confirmation}</span>}
         {error && <p className="error-text">{error}</p>}
       </form>
 
-      <h2 style={{ marginTop: 20 }}>My Requests</h2>
+      <h2 style={{ marginTop: 20 }}>My Leave</h2>
       <table>
         <thead>
           <tr>
@@ -100,7 +117,7 @@ export function LeaveForm() {
           {requests.length === 0 && (
             <tr>
               <td colSpan={4} className="muted">
-                No leave requests yet.
+                No leave marked yet.
               </td>
             </tr>
           )}

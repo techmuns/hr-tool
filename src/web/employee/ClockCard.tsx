@@ -5,7 +5,7 @@ import { Button } from "../components/ui/Button";
 import { currentMonth, formatTime, todayISODate } from "../date";
 import type { Attendance } from "../types";
 
-export function ClockCard() {
+export function ClockCard({ onChange }: { onChange?: () => void }) {
   const [today, setToday] = useState<Attendance | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +25,7 @@ export function ClockCard() {
     try {
       const row = await api.post<Attendance>("/attendance/clock-in");
       setToday(row);
+      onChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clock in");
     } finally {
@@ -38,6 +39,7 @@ export function ClockCard() {
     try {
       const row = await api.post<Attendance>("/attendance/clock-out");
       setToday(row);
+      onChange?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clock out");
     } finally {

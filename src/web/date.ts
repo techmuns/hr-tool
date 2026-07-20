@@ -38,17 +38,14 @@ export function recentMonths(count = 12): MonthOption[] {
 }
 
 /**
- * The day-of-month numbers to render for a "YYYY-MM" month, oldest→newest.
- * For the current month we stop at today (days "generate" up to now); for a
- * past month we show every day.
+ * Every day-of-month number for a "YYYY-MM" month, oldest→newest. Leave can
+ * be marked ahead of time, so future days can carry data too — the grid
+ * always shows the whole month rather than stopping at today.
  */
 export function daysForMonth(month: string): number[] {
   const [year, mon] = month.split("-").map(Number);
-  const now = new Date();
-  const isCurrentMonth = year === now.getFullYear() && mon === now.getMonth() + 1;
   const daysInMonth = new Date(year, mon, 0).getDate();
-  const last = isCurrentMonth ? Math.min(now.getDate(), daysInMonth) : daysInMonth;
-  return Array.from({ length: last }, (_, i) => i + 1);
+  return Array.from({ length: daysInMonth }, (_, i) => i + 1);
 }
 
 export function dayKey(month: string, day: number): string {
