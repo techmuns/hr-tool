@@ -5,7 +5,21 @@ import type { Employee } from "../types";
 const app = new Hono<AppEnv>();
 
 app.post("/login", async (c) => {
-  const body = await c.req.json<{ text?: string }>().catch(() => ({}) as { text?: string });
+  const body = await c.req.json<{ text?: string; email?: string }>().catch(
+    () => ({}) as { text?: string; email?: string },
+  );
+  const email = (body.email ?? "").trim();
+
+  if (email) {
+    const employee = await c.env.DB.prepare(
+      "SELECT * FROM employees WHERE email = ? COLLATE NOCASE ORDER BY id LIMIT 1",
+    )
+      .bind(email)
+      .first<Employee>();
+    if (!employee) return c.json({ error: "No account found for this email" }, 404);
+    return c.json({ role: employee.role, employee });
+  }
+
   const text = (body.text ?? "").trim().toLowerCase();
 
   if (text === "admin") {
