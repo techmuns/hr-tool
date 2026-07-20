@@ -99,11 +99,11 @@ export interface Payroll {
   paid_days: number;
   unpaid_days: number;
   deductions: number;
+  reimbursements: number;
   net_pay: number;
   generated_at: string;
 }
 
 export interface PayrollWithName extends Payroll {
   employee_name: string;
-  reimbursements_total: number;
 }

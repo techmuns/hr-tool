@@ -58,7 +58,7 @@ export function Payroll() {
             <tr key={row.id}>
               <td>{row.employee_name}</td>
               <td>{formatINR(row.base_salary)}</td>
-              <td>{formatINR(row.reimbursements_total)}</td>
+              <td>{formatINR(row.reimbursements)}</td>
               <td>{row.paid_days}</td>
               <td>{row.unpaid_days}</td>
               <td>{formatINR(row.deductions)}</td>

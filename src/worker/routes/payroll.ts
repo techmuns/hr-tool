@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
+import { businessDaysInRange } from "../db";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -17,49 +18,63 @@ app.get("/admin/payroll", async (c) => {
     const employees = await c.env.DB.prepare("SELECT * FROM employees").all<Employee>();
 
     for (const employee of employees.results) {
-      const unpaidRow = await c.env.DB.prepare(
+      // Days not clocked in (marked absent) during the period.
+      const absentRow = await c.env.DB.prepare(
         `SELECT COUNT(*) AS n FROM attendance
          WHERE employee_id = ? AND work_date LIKE ? AND status = 'absent'`
       )
         .bind(employee.id, `${period}%`)
         .first<{ n: number }>();
-      const unpaidLeaveRow = await c.env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM leave_requests
-         WHERE employee_id = ? AND leave_type = 'unpaid' AND status = 'approved'
-           AND start_date LIKE ?`
+
+      // Unpaid leave days that fall inside the period (leave requests store
+      // ranges, so expand them to business days and count those in-period).
+      const unpaidLeaves = await c.env.DB.prepare(
+        `SELECT start_date, end_date FROM leave_requests
+         WHERE employee_id = ? AND leave_type = 'unpaid' AND status = 'approved'`
+      )
+        .bind(employee.id)
+        .all<{ start_date: string; end_date: string }>();
+      let unpaidLeaveDays = 0;
+      for (const l of unpaidLeaves.results) {
+        unpaidLeaveDays += businessDaysInRange(l.start_date, l.end_date).filter((d) => d.startsWith(period)).length;
+      }
+
+      // Reimbursements submitted during the period, added on top of salary.
+      const reimbursementRow = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(amount), 0) AS total FROM reimbursements
+         WHERE employee_id = ? AND created_at LIKE ?`
       )
         .bind(employee.id, `${period}%`)
-        .first<{ n: number }>();
+        .first<{ total: number }>();
+      const reimbursements = reimbursementRow?.total ?? 0;
 
-      const unpaidDays = (unpaidRow?.n ?? 0) + (unpaidLeaveRow?.n ?? 0);
+      const unpaidDays = (absentRow?.n ?? 0) + unpaidLeaveDays;
       const paidDays = Math.max(WORKING_DAYS_PER_MONTH - unpaidDays, 0);
       const dailyRate = employee.monthly_salary / WORKING_DAYS_PER_MONTH;
       const deductions = Math.round(dailyRate * unpaidDays);
-      const netPay = employee.monthly_salary - deductions;
+      const netPay = employee.monthly_salary - deductions + reimbursements;
 
       await c.env.DB.prepare(
-        `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions, net_pay)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions, reimbursements, net_pay)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (employee_id, period)
          DO UPDATE SET base_salary = excluded.base_salary, paid_days = excluded.paid_days,
                        unpaid_days = excluded.unpaid_days, deductions = excluded.deductions,
-                       net_pay = excluded.net_pay, generated_at = datetime('now')`
+                       reimbursements = excluded.reimbursements, net_pay = excluded.net_pay,
+                       generated_at = datetime('now')`
       )
-        .bind(employee.id, period, employee.monthly_salary, paidDays, unpaidDays, deductions, netPay)
+        .bind(employee.id, period, employee.monthly_salary, paidDays, unpaidDays, deductions, reimbursements, netPay)
         .run();
     }
   }
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name,
-       COALESCE((SELECT SUM(r.amount) FROM reimbursements r
-                 WHERE r.employee_id = p.employee_id AND r.created_at LIKE ?), 0) AS reimbursements_total
-     FROM payroll p
+    `SELECT p.*, e.name AS employee_name FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`
   )
-    .bind(`${period}%`, period)
+    .bind(period)
     .all<PayrollWithName>();
 
   return c.json(rows.results);

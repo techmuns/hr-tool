@@ -4,17 +4,17 @@ import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { formatDate } from "../date";
-import type { LeaveRequest, LeaveType } from "../types";
+import type { LeaveRequest } from "../types";
 
 interface MarkLeaveResponse {
-  leave: LeaveRequest;
   dates: string[];
+  paid: number;
+  unpaid: number;
 }
 
 export function LeaveForm({ onMarked }: { onMarked?: () => void }) {
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [days, setDays] = useState("1");
-  const [leaveType, setLeaveType] = useState<LeaveType>("paid");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,12 +37,17 @@ export function LeaveForm({ onMarked }: { onMarked?: () => void }) {
     setError(null);
     setConfirmation(null);
     try {
-      const res = await api.post<MarkLeaveResponse>("/leave", { days: n, leave_type: leaveType, reason });
+      const res = await api.post<MarkLeaveResponse>("/leave", { days: n, reason });
       const first = formatDate(res.dates[0]);
       const last = formatDate(res.dates[res.dates.length - 1]);
-      setConfirmation(
-        res.dates.length === 1 ? `Marked ${first} as leave.` : `Marked ${first} – ${last} (${res.dates.length} days) as leave.`
-      );
+      const range = res.dates.length === 1 ? first : `${first} – ${last} (${res.dates.length} days)`;
+      const split =
+        res.unpaid === 0
+          ? "all paid"
+          : res.paid === 0
+            ? "all unpaid"
+            : `${res.paid} paid, ${res.unpaid} unpaid`;
+      setConfirmation(`Marked ${range} as leave — ${split}.`);
       setReason("");
       load();
       onMarked?.();
@@ -56,27 +61,13 @@ export function LeaveForm({ onMarked }: { onMarked?: () => void }) {
   return (
     <Card title="Mark Leave">
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Marks the next N business days, starting today, as leave — weekends are skipped automatically.
+        Marks the next N business days, starting today, as leave — weekends are skipped. Paid or unpaid is
+        decided automatically from your remaining paid-leave allowance.
       </p>
       <form onSubmit={submit}>
-        <div className="row">
-          <div className="field">
-            <label>Number of days</label>
-            <input
-              type="number"
-              min={1}
-              max={60}
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>Type</label>
-            <select value={leaveType} onChange={(e) => setLeaveType(e.target.value as LeaveType)}>
-              <option value="paid">Paid</option>
-              <option value="unpaid">Unpaid</option>
-            </select>
-          </div>
+        <div className="field" style={{ maxWidth: 220 }}>
+          <label>Number of days</label>
+          <input type="number" min={1} max={60} value={days} onChange={(e) => setDays(e.target.value)} />
         </div>
         <div className="field">
           <label>Reason</label>

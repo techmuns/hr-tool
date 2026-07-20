@@ -1,0 +1,1 @@
+ALTER TABLE payroll ADD COLUMN reimbursements INTEGER NOT NULL DEFAULT 0;

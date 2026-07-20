@@ -19,7 +19,7 @@ interface Column {
 const COLUMNS: Column[] = [
   { header: "Employee", width: 42, value: (r) => r.employee_name },
   { header: "Base Salary", width: 34, align: "right", value: (r) => formatRupeesPlain(r.base_salary) },
-  { header: "Reimbursements", width: 36, align: "right", value: (r) => formatRupeesPlain(r.reimbursements_total) },
+  { header: "Reimbursements", width: 36, align: "right", value: (r) => formatRupeesPlain(r.reimbursements) },
   { header: "Deductions", width: 32, align: "right", value: (r) => formatRupeesPlain(r.deductions) },
   { header: "Net Pay", width: 34, align: "right", value: (r) => formatRupeesPlain(r.net_pay) },
 ];
@@ -79,7 +79,7 @@ export function exportPayrollPdf(period: string, rows: PayrollWithName[]) {
     y += ROW_HEIGHT;
 
     totalBase += row.base_salary;
-    totalReimbursements += row.reimbursements_total;
+    totalReimbursements += row.reimbursements;
     totalDeductions += row.deductions;
     totalNet += row.net_pay;
   }
