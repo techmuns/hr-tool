@@ -917,3 +917,355 @@ thead .hm-name {
 .team-list li:last-child {
   border-bottom: none;
 }
+
+/* ── Clock card ─────────────────────────────────────────── */
+.clock-card {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+
+.clock-face-wrap {
+  position: relative;
+  width: 168px;
+  height: 168px;
+  flex-shrink: 0;
+}
+
+/* soft glow ring that wakes up while a session is running */
+.clock-face-wrap::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+  box-shadow: 0 0 0 0 rgba(12, 163, 12, 0);
+}
+
+.clock-card.is-working .clock-face-wrap::after {
+  opacity: 1;
+  animation: clock-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes clock-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.28);
+  }
+  50% {
+    box-shadow: 0 0 22px 4px rgba(12, 163, 12, 0.18);
+  }
+}
+
+.clock-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.clock-track {
+  fill: none;
+  stroke: var(--surface-2);
+  stroke-width: 6;
+}
+
+.clock-progress {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 6;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: center;
+  transition: stroke-dashoffset 0.6s ease, stroke 0.4s ease;
+}
+
+.clock-card.is-working .clock-progress {
+  stroke: var(--present);
+}
+
+.clock-dial {
+  fill: var(--surface);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.clock-tick {
+  stroke: var(--border-strong);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.clock-hand {
+  stroke-linecap: round;
+  transform-origin: 84px 84px;
+  transition: transform 0.18s cubic-bezier(0.4, 2.1, 0.55, 1);
+}
+
+.clock-hand.hour {
+  stroke: var(--text);
+  stroke-width: 5;
+}
+
+.clock-hand.minute {
+  stroke: var(--text);
+  stroke-width: 3.5;
+}
+
+.clock-hand.second {
+  stroke: var(--present);
+  stroke-width: 1.6;
+}
+
+.clock-card:not(.is-working) .clock-hand.second {
+  stroke: var(--primary);
+}
+
+.clock-hub {
+  fill: var(--text);
+}
+
+.clock-hub-ring {
+  fill: none;
+  stroke: var(--present);
+  stroke-width: 1.5;
+}
+
+.clock-card:not(.is-working) .clock-hub-ring {
+  stroke: var(--primary);
+}
+
+.clock-body {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clock-date {
+  font-size: 13px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.clock-digital {
+  font-size: 40px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.clock-digital .sec {
+  font-size: 22px;
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.clock-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  align-self: flex-start;
+  background: var(--surface-2);
+  color: var(--muted);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+
+.clock-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+
+.clock-status.working {
+  background: var(--present-soft);
+  color: var(--present);
+}
+.clock-status.working .dot {
+  background: var(--present);
+  animation: clock-pulse 1.6s ease-in-out infinite;
+}
+
+.clock-status.done {
+  background: var(--present-soft);
+  color: var(--present);
+}
+.clock-status.done .dot {
+  background: var(--present);
+}
+
+@keyframes clock-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.5);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(12, 163, 12, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(12, 163, 12, 0);
+  }
+}
+
+.clock-elapsed {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.clock-elapsed b {
+  color: var(--text);
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.clock-stamps {
+  display: flex;
+  gap: 22px;
+  margin-top: 2px;
+}
+
+.clock-stamp {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.clock-stamp .lbl {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.clock-stamp .val {
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.clock-stamp .val.empty {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* Big toggle action */
+.clock-action {
+  margin-top: 10px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  align-self: flex-start;
+  padding: 12px 26px;
+  border-radius: 12px;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  color: #fff;
+  background: var(--primary);
+  box-shadow: 0 6px 18px rgba(42, 120, 214, 0.28);
+  transition: transform 0.14s ease, box-shadow 0.2s ease, background 0.3s ease, filter 0.15s ease;
+  overflow: hidden;
+}
+
+.clock-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+.clock-action:active:not(:disabled) {
+  transform: translateY(0) scale(0.98);
+}
+
+.clock-action.stop {
+  background: var(--absent);
+  box-shadow: 0 6px 18px rgba(208, 59, 59, 0.28);
+}
+
+.clock-action:disabled {
+  background: var(--surface-2);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.clock-action .glyph {
+  display: inline-flex;
+  transition: transform 0.3s cubic-bezier(0.4, 1.6, 0.5, 1);
+}
+.clock-action.stop .glyph {
+  transform: rotate(90deg);
+}
+
+.clock-action .spinner {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  animation: clock-spin 0.7s linear infinite;
+}
+
+@keyframes clock-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* click ripple */
+.clock-action .ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.5);
+  transform: translate(-50%, -50%) scale(0);
+  animation: clock-ripple 0.6s ease-out;
+  pointer-events: none;
+}
+
+@keyframes clock-ripple {
+  to {
+    transform: translate(-50%, -50%) scale(4);
+    opacity: 0;
+  }
+}
+
+@keyframes clock-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.clock-body > * {
+  animation: clock-fade-in 0.4s ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clock-hand,
+  .clock-progress {
+    transition: none;
+  }
+  .clock-card.is-working .clock-face-wrap::after,
+  .clock-status.working .dot,
+  .clock-action .ripple,
+  .clock-body > * {
+    animation: none;
+  }
+}
