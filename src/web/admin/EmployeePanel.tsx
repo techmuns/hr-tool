@@ -5,6 +5,7 @@ import { Tag } from "../components/ui/Tag";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
 import { getSession } from "../session";
+import { ConfirmModal } from "../components/ui/ConfirmModal";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
 import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Role, Team, WorkMode } from "../types";
@@ -62,12 +63,14 @@ export function EmployeePanel({
   const [loading, setLoading] = useState(!isNew);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState(false);
 
   const [addingReimbursement, setAddingReimbursement] = useState(false);
   const [reimAmount, setReimAmount] = useState("");
   const [reimNote, setReimNote] = useState("");
   const [reimBusy, setReimBusy] = useState(false);
   const [removingReimId, setRemovingReimId] = useState<number | null>(null);
+  const [confirmReimId, setConfirmReimId] = useState<number | null>(null);
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [showTeamManager, setShowTeamManager] = useState(false);
@@ -145,7 +148,12 @@ export function EmployeePanel({
 
   async function remove() {
     if (isNew || !employee) return;
-    if (!window.confirm(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`)) return;
+    setConfirmRemove(true);
+  }
+
+  async function confirmRemoveEmployee() {
+    setConfirmRemove(false);
+    if (isNew || !employee) return;
     setBusy(true);
     setError(null);
     try {
@@ -173,8 +181,10 @@ export function EmployeePanel({
     }
   }
 
-  async function removeReimbursement(id: number) {
-    if (!window.confirm("Remove this reimbursement?")) return;
+  async function removeReimbursement() {
+    if (confirmReimId == null) return;
+    const id = confirmReimId;
+    setConfirmReimId(null);
     setRemovingReimId(id);
     setError(null);
     try {
@@ -390,7 +400,7 @@ export function EmployeePanel({
                                 className="row-remove-btn"
                                 title="Remove reimbursement"
                                 disabled={removingReimId === r.id}
-                                onClick={() => removeReimbursement(r.id)}
+                                onClick={() => setConfirmReimId(r.id)}
                               >
                                 ✕
                               </button>
@@ -490,6 +500,24 @@ export function EmployeePanel({
           roles={roles}
           onClose={() => setShowRoleManager(false)}
           onChanged={loadRoles}
+        />
+      )}
+
+      {confirmRemove && employee && (
+        <ConfirmModal
+          message={`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`}
+          busy={busy}
+          onConfirm={confirmRemoveEmployee}
+          onCancel={() => setConfirmRemove(false)}
+        />
+      )}
+
+      {confirmReimId != null && (
+        <ConfirmModal
+          message="Remove this reimbursement?"
+          busy={removingReimId === confirmReimId}
+          onConfirm={removeReimbursement}
+          onCancel={() => setConfirmReimId(null)}
         />
       )}
     </>
