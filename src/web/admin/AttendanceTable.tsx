@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths } from "../date";
+import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths, todayISODate } from "../date";
 import { scrollToToday } from "../scrollToToday";
 import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
@@ -155,10 +155,16 @@ export function AttendanceTable() {
                   </td>
                   {days.map((day) => {
                     const cell = dayMap?.get(dayKey(month, day)) ?? null;
-                    const cls = cell?.status ?? "empty";
+                    const dateStr = dayKey(month, day);
+                    const started = dateStr <= todayISODate();
+                    const onOrAfterJoin = dateStr >= emp.date_of_joining;
+                    const isSyntheticAbsent = !cell && started && onOrAfterJoin;
+                    const cls = cell?.status ?? (isSyntheticAbsent ? "absent" : "empty");
                     const title = cell
-                      ? `${emp.name} — ${dayKey(month, day)}: ${STATUS_LABEL[cell.status]} (click to change)`
-                      : `${emp.name} — ${dayKey(month, day)}: no record (click to set)`;
+                      ? `${emp.name} — ${dateStr}: ${STATUS_LABEL[cell.status]} (click to change)`
+                      : isSyntheticAbsent
+                        ? `${emp.name} — ${dateStr}: Not clocked in (click to set)`
+                        : `${emp.name} — ${dateStr}: no record (click to set)`;
                     return (
                       <td key={day}>
                         <button
@@ -184,6 +190,11 @@ export function AttendanceTable() {
                               ) : (
                                 <span className="hm-times hm-noclock">no clock</span>
                               )}
+                            </>
+                          ) : isSyntheticAbsent ? (
+                            <>
+                              <span className="hm-status-label">{STATUS_LABEL.absent}</span>
+                              <span className="hm-times hm-noclock">no clock</span>
                             </>
                           ) : (
                             <span className="hm-add">+</span>

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
-import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths } from "../date";
+import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths, todayISODate } from "../date";
 import { scrollToToday } from "../scrollToToday";
-import type { Attendance, AttendanceStatus } from "../types";
+import type { Attendance, AttendanceStatus, EmployeeWithTeam } from "../types";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
@@ -14,11 +14,19 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
 export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
   const [month, setMonth] = useState(currentMonth());
   const [rows, setRows] = useState<Attendance[]>([]);
+  const [dateOfJoining, setDateOfJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const months = useMemo(() => recentMonths(12), []);
   const days = useMemo(() => daysForMonth(month), [month]);
+
+  useEffect(() => {
+    api
+      .get<EmployeeWithTeam>("/me")
+      .then((emp) => setDateOfJoining(emp.date_of_joining))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     api
@@ -66,10 +74,16 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
             <tr>
               {days.map((day) => {
                 const row = byDate.get(dayKey(month, day));
-                const cls = row?.status ?? "empty";
+                const dateStr = dayKey(month, day);
+                const started = dateStr <= todayISODate();
+                const onOrAfterJoin = dateOfJoining != null && dateStr >= dateOfJoining;
+                const isSyntheticAbsent = !row && started && onOrAfterJoin;
+                const cls = row?.status ?? (isSyntheticAbsent ? "absent" : "empty");
                 const title = row
-                  ? `${dayKey(month, day)}: ${STATUS_LABEL[row.status]}`
-                  : `${dayKey(month, day)}: no record`;
+                  ? `${dateStr}: ${STATUS_LABEL[row.status]}`
+                  : isSyntheticAbsent
+                    ? `${dateStr}: Not clocked in`
+                    : `${dateStr}: no record`;
                 return (
                   <td key={day}>
                     <div className={`hm-cell ${cls}`} title={title}>
@@ -90,6 +104,11 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
                           ) : (
                             <span className="hm-times hm-noclock">no clock</span>
                           )}
+                        </>
+                      ) : isSyntheticAbsent ? (
+                        <>
+                          <span className="hm-status-label">{STATUS_LABEL.absent}</span>
+                          <span className="hm-times hm-noclock">no clock</span>
                         </>
                       ) : null}
                     </div>

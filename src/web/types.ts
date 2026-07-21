@@ -1,6 +1,7 @@
 export type {
   WorkMode,
   EmployeeRole,
+  Tier,
   AttendanceStatus,
   LeaveType,
   LeaveStatus,
@@ -9,6 +10,7 @@ export type {
   EmployeeWithTeam,
   EmployeeDetail,
   Team,
+  Role,
   Attendance,
   AttendanceWithName,
   LeaveRequest,

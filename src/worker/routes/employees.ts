@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
-import { requireAdmin, requireEmployee } from "../auth";
-import type { Employee, EmployeeWithTeam, LeaveRequest, Payroll, Reimbursement, WorkMode } from "../types";
+import { requireAdmin, requireEmployee, requireFounder } from "../auth";
+import type { Employee, EmployeeWithTeam, LeaveRequest, Payroll, Reimbursement, Tier, WorkMode } from "../types";
 
 const app = new Hono<AppEnv>();
 
@@ -201,6 +201,26 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
      monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
   )
     .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title, id)
+    .run();
+
+  const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
+  return c.json(updated);
+});
+
+app.patch("/employees/:id/tier", requireFounder, async (c) => {
+  const id = Number(c.req.param("id"));
+  const existing = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
+  if (!existing) return c.json({ error: "Employee not found" }, 404);
+  if (existing.tier === "founder") return c.json({ error: "Cannot change a founder's access" }, 400);
+
+  const body = await c.req.json<{ tier?: Tier }>().catch(() => ({}) as { tier?: Tier });
+  if (body.tier !== "employee" && body.tier !== "hr") {
+    return c.json({ error: "tier must be 'employee' or 'hr'" }, 400);
+  }
+  const role = body.tier === "hr" ? "admin" : "employee";
+
+  await c.env.DB.prepare("UPDATE employees SET tier = ?, role = ? WHERE id = ?")
+    .bind(body.tier, role, id)
     .run();
 
   const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();

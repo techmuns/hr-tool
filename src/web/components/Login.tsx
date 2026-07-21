@@ -16,7 +16,7 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     setLoading(true);
     try {
       const data = await api.post<{ role: EmployeeRole; employee: Employee }>("/login", { text });
-      setSession({ role: data.role, employeeId: data.employee.id });
+      setSession({ role: data.role, employeeId: data.employee.id, tier: data.employee.tier });
       onLoggedIn();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
@@ -32,13 +32,13 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
           <ThemeToggle />
         </div>
         <h1>HR Tool</h1>
-        <p className="muted">Type "admin" or "employee" to continue.</p>
+        <p className="muted">Type "admin", "hr", "employee", or your email to continue.</p>
         <form onSubmit={submit}>
           <div className="field">
             <input
               type="text"
               autoFocus
-              placeholder="admin or employee"
+              placeholder="admin, hr, employee, or your email"
               value={text}
               onChange={(e) => setText(e.target.value)}
             />
