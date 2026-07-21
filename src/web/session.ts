@@ -1,10 +1,11 @@
-import type { EmployeeRole } from "./types";
+import type { EmployeeRole, Tier } from "./types";
 
 const KEY = "hr.session";
 
 export interface Session {
   role: EmployeeRole;
   employeeId: number;
+  tier: Tier;
 }
 
 export function getSession(): Session | null {

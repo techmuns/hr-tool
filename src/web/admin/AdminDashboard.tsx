@@ -7,6 +7,7 @@ import { Payroll } from "./Payroll";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
+import { getSession } from "../session";
 
 const VIEWS = [
   { key: "attendance", label: "Attendance" },
@@ -18,13 +19,14 @@ const VIEWS = [
 
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
   const [view, setView] = useState("attendance");
+  const tier = getSession()?.tier;
 
   return (
     <div className="app-shell">
       <div className="topbar">
         <h1>HR Tool — Admin</h1>
         <div className="topbar-actions">
-          <span className="who">HR view</span>
+          <span className="who">{tier === "founder" ? "Founder view" : "HR view"}</span>
           <ThemeToggle />
           <Button onClick={onLogout}>Log out</Button>
         </div>

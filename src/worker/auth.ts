@@ -39,3 +39,11 @@ export async function requireAdmin(c: Context<AppEnv>, next: Next) {
   }
   await next();
 }
+
+export async function requireFounder(c: Context<AppEnv>, next: Next) {
+  const employee = c.get("employee");
+  if (!employee || employee.tier !== "founder") {
+    return c.json({ error: "Founder access required" }, 403);
+  }
+  await next();
+}

@@ -4,8 +4,10 @@ import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
+import { getSession } from "../session";
 import { TeamManager } from "./TeamManager";
-import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Team, WorkMode } from "../types";
+import { RoleManager } from "./RoleManager";
+import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Role, Team, WorkMode } from "../types";
 
 interface FormState {
   name: string;
@@ -70,11 +72,22 @@ export function EmployeePanel({
   const [teams, setTeams] = useState<Team[]>([]);
   const [showTeamManager, setShowTeamManager] = useState(false);
 
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [showRoleManager, setShowRoleManager] = useState(false);
+
+  const [tierBusy, setTierBusy] = useState(false);
+  const viewerTier = getSession()?.tier;
+
   function loadTeams() {
     api.get<Team[]>("/admin/teams").then(setTeams).catch(() => {});
   }
 
+  function loadRoles() {
+    api.get<Role[]>("/admin/roles").then(setRoles).catch(() => {});
+  }
+
   useEffect(loadTeams, []);
+  useEffect(loadRoles, []);
 
   function loadDetail() {
     if (isNew) return;
@@ -146,6 +159,20 @@ export function EmployeePanel({
     }
   }
 
+  async function changeTier(tier: "employee" | "hr") {
+    if (!employee) return;
+    setTierBusy(true);
+    setError(null);
+    try {
+      const updated = await api.patch<Employee>(`/employees/${employee.id}/tier`, { tier });
+      setEmployee(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update access");
+    } finally {
+      setTierBusy(false);
+    }
+  }
+
   async function removeReimbursement(id: number) {
     if (!window.confirm("Remove this reimbursement?")) return;
     setRemovingReimId(id);
@@ -209,6 +236,23 @@ export function EmployeePanel({
                 <label>Email</label>
                 <input type="text" value={form.email} onChange={(e) => set("email", e.target.value)} />
               </div>
+              {!isNew && employee && viewerTier === "founder" && (
+                <div className="field">
+                  <label>Access level</label>
+                  {employee.tier === "founder" ? (
+                    <p className="field-hint">Founder — access level can't be changed here.</p>
+                  ) : (
+                    <select
+                      value={employee.tier}
+                      disabled={tierBusy}
+                      onChange={(e) => changeTier(e.target.value as "employee" | "hr")}
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="hr">HR</option>
+                    </select>
+                  )}
+                </div>
+              )}
               <div className="field">
                 <label>Address</label>
                 <input type="text" value={form.location} onChange={(e) => set("location", e.target.value)} />
@@ -253,12 +297,22 @@ export function EmployeePanel({
                 </div>
                 <div className="field">
                   <label>Role</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Software Engineer"
-                    value={form.job_title}
-                    onChange={(e) => set("job_title", e.target.value)}
-                  />
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <select value={form.job_title} onChange={(e) => set("job_title", e.target.value)}>
+                      <option value="">No role</option>
+                      {form.job_title && !roles.some((r) => r.name === form.job_title) && (
+                        <option value={form.job_title}>{form.job_title}</option>
+                      )}
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.name}>
+                          {r.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button type="button" onClick={() => setShowRoleManager(true)} title="Manage roles">
+                      Manage
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="field">
@@ -428,6 +482,14 @@ export function EmployeePanel({
           teams={teams}
           onClose={() => setShowTeamManager(false)}
           onChanged={loadTeams}
+        />
+      )}
+
+      {showRoleManager && (
+        <RoleManager
+          roles={roles}
+          onClose={() => setShowRoleManager(false)}
+          onChanged={loadRoles}
         />
       )}
     </>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Tag } from "../components/ui/Tag";
 import { formatDate } from "../date";
 import { EmployeePanel } from "./EmployeePanel";
 import type { EmployeeWithTeam, Team, WorkMode } from "../types";
@@ -94,6 +95,7 @@ export function EmployeeDirectory() {
             <th>Team</th>
             <th>Email</th>
             <th>Role</th>
+            <th>Access</th>
             <th>Type</th>
             <th>Joined</th>
           </tr>
@@ -109,13 +111,14 @@ export function EmployeeDirectory() {
               <td>{emp.team_name || <span className="muted">—</span>}</td>
               <td>{emp.email || <span className="muted">—</span>}</td>
               <td>{emp.job_title || <span className="muted">—</span>}</td>
+              <td>{emp.tier === "employee" ? <span className="muted">—</span> : <Tag value={emp.tier} />}</td>
               <td>{WORK_MODE_LABEL[emp.work_mode]}</td>
               <td>{formatDate(emp.date_of_joining)}</td>
             </tr>
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={6} className="muted">
+              <td colSpan={7} className="muted">
                 No employees match these filters.
               </td>
             </tr>
