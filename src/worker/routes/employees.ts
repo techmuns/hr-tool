@@ -56,7 +56,7 @@ app.get("/employees", requireAdmin, async (c) => {
   const employees = await c.env.DB.prepare(
     `SELECT e.*, t.name AS team_name FROM employees e
      LEFT JOIN teams t ON t.id = e.team_id
-     ORDER BY e.id`
+     ORDER BY t.name IS NULL, t.name ASC, e.name ASC`
   ).all<EmployeeWithTeam>();
   return c.json(employees.results);
 });
