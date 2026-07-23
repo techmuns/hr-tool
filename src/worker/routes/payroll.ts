@@ -15,7 +15,8 @@ app.get("/admin/payroll", async (c) => {
   if (!period) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   if (c.req.query("generate") === "1") {
-    const employees = await c.env.DB.prepare("SELECT * FROM employees").all<Employee>();
+    // Founders aren't run through payroll at all.
+    const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE tier != 'founder'").all<Employee>();
 
     for (const employee of employees.results) {
       // Not clocking in has no effect on pay — deductions come only from leave.
@@ -65,7 +66,7 @@ app.get("/admin/payroll", async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT p.*, e.name AS employee_name FROM payroll p
      JOIN employees e ON e.id = p.employee_id
-     WHERE p.period = ?
+     WHERE p.period = ? AND e.tier != 'founder'
      ORDER BY e.name ASC`
   )
     .bind(period)
