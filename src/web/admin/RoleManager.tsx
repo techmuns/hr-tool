@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { Button } from "../components/ui/Button";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import type { Role } from "../types";
 
 export function RoleManager({
@@ -15,6 +16,7 @@ export function RoleManager({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function addRole(e: React.FormEvent) {
@@ -34,7 +36,6 @@ export function RoleManager({
   }
 
   async function removeRole(id: number) {
-    if (!window.confirm("Delete this role? Employees currently on it keep their job title.")) return;
     setRemovingId(id);
     setError(null);
     try {
@@ -44,6 +45,7 @@ export function RoleManager({
       setError(err instanceof Error ? err.message : "Failed to delete role");
     } finally {
       setRemovingId(null);
+      setConfirmingId(null);
     }
   }
 
@@ -71,7 +73,7 @@ export function RoleManager({
                     className="row-remove-btn"
                     title="Delete role"
                     disabled={removingId === r.id}
-                    onClick={() => removeRole(r.id)}
+                    onClick={() => setConfirmingId(r.id)}
                   >
                     ✕
                   </button>
@@ -92,6 +94,16 @@ export function RoleManager({
           </form>
         </div>
       </div>
+
+      {confirmingId !== null && (
+        <ConfirmDialog
+          title="Delete role"
+          message="Delete this role? Employees currently on it keep their job title."
+          busy={removingId === confirmingId}
+          onCancel={() => setConfirmingId(null)}
+          onConfirm={() => removeRole(confirmingId)}
+        />
+      )}
     </>
   );
 }

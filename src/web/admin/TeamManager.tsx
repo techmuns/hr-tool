@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../api";
 import { Button } from "../components/ui/Button";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import type { Team } from "../types";
 
 export function TeamManager({
@@ -15,6 +16,7 @@ export function TeamManager({
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [confirmingId, setConfirmingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function addTeam(e: React.FormEvent) {
@@ -34,7 +36,6 @@ export function TeamManager({
   }
 
   async function removeTeam(id: number) {
-    if (!window.confirm("Delete this team? Employees on it will become unassigned.")) return;
     setRemovingId(id);
     setError(null);
     try {
@@ -44,6 +45,7 @@ export function TeamManager({
       setError(err instanceof Error ? err.message : "Failed to delete team");
     } finally {
       setRemovingId(null);
+      setConfirmingId(null);
     }
   }
 
@@ -71,7 +73,7 @@ export function TeamManager({
                     className="row-remove-btn"
                     title="Delete team"
                     disabled={removingId === t.id}
-                    onClick={() => removeTeam(t.id)}
+                    onClick={() => setConfirmingId(t.id)}
                   >
                     ✕
                   </button>
@@ -92,6 +94,16 @@ export function TeamManager({
           </form>
         </div>
       </div>
+
+      {confirmingId !== null && (
+        <ConfirmDialog
+          title="Delete team"
+          message="Delete this team? Employees on it will become unassigned."
+          busy={removingId === confirmingId}
+          onCancel={() => setConfirmingId(null)}
+          onConfirm={() => removeTeam(confirmingId)}
+        />
+      )}
     </>
   );
 }
