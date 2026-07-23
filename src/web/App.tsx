@@ -43,16 +43,11 @@ function HrApp({ email }: { email: string }) {
     };
   }, [email, session]);
 
-  function logout() {
-    clearSession();
-    setSessionState(null);
-  }
-
   if (error) return <WaitingState message={error} isError />;
   if (!session || session.email !== email) return <WaitingState message="Signing you in…" />;
 
   if (session.role === "admin") {
-    return <AdminDashboard onLogout={logout} />;
+    return <AdminDashboard />;
   }
   return <EmployeeDashboard />;
 }

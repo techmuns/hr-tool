@@ -1,13 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Nav } from "../components/Nav";
-import { Button } from "../components/ui/Button";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
-import { getSession } from "../session";
+import { api } from "../api";
+import type { EmployeeWithTeam } from "../types";
 
 const VIEWS = [
   { key: "attendance", label: "Attendance" },
@@ -17,18 +17,26 @@ const VIEWS = [
   { key: "chat", label: "Chat" },
 ];
 
-export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+export function AdminDashboard() {
   const [view, setView] = useState("attendance");
-  const tier = getSession()?.tier;
+  const [employee, setEmployee] = useState<EmployeeWithTeam | null>(null);
+
+  useEffect(() => {
+    api.get<EmployeeWithTeam>("/me").then(setEmployee).catch(() => setEmployee(null));
+  }, []);
 
   return (
     <div className="app-shell">
       <div className="topbar">
-        <h1>HR Tool — Admin</h1>
+        <h1>HR Tool</h1>
         <div className="topbar-actions">
-          <span className="who">{tier === "founder" ? "Founder view" : "HR view"}</span>
+          {employee && (
+            <span className="who">
+              {employee.name}
+              {employee.job_title ? ` · ${employee.job_title}` : ""}
+            </span>
+          )}
           <ThemeToggle />
-          <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>
       <div className="layout">
