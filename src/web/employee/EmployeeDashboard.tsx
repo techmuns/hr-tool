@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Nav } from "../components/Nav";
-import { Button } from "../components/ui/Button";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ClockCard } from "./ClockCard";
 import { WorkingDays } from "./WorkingDays";
@@ -9,6 +8,8 @@ import { LeaveForm } from "./LeaveForm";
 import { ReimbursementRequest } from "./ReimbursementRequest";
 import { FeedbackForm } from "./FeedbackForm";
 import { Chat } from "./Chat";
+import { api } from "../api";
+import type { EmployeeWithTeam } from "../types";
 
 const VIEWS = [
   { key: "home", label: "Home" },
@@ -16,18 +17,27 @@ const VIEWS = [
   { key: "chat", label: "Chat with HR" },
 ];
 
-export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
+export function EmployeeDashboard() {
   const [view, setView] = useState("home");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
+  const [employee, setEmployee] = useState<EmployeeWithTeam | null>(null);
+
+  useEffect(() => {
+    api.get<EmployeeWithTeam>("/me").then(setEmployee).catch(() => setEmployee(null));
+  }, []);
 
   return (
     <div className="app-shell">
       <div className="topbar">
-        <h1>HR Tool — Employee</h1>
+        <h1>HR Tool</h1>
         <div className="topbar-actions">
-          <span className="who">Employee view</span>
+          {employee && (
+            <span className="who">
+              {employee.name}
+              {employee.job_title ? ` · ${employee.job_title}` : ""}
+            </span>
+          )}
           <ThemeToggle />
-          <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>
       <div className="layout">

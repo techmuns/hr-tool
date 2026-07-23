@@ -18,13 +18,7 @@ app.get("/admin/payroll", async (c) => {
     const employees = await c.env.DB.prepare("SELECT * FROM employees").all<Employee>();
 
     for (const employee of employees.results) {
-      // Days not clocked in (marked absent) during the period.
-      const absentRow = await c.env.DB.prepare(
-        `SELECT COUNT(*) AS n FROM attendance
-         WHERE employee_id = ? AND work_date LIKE ? AND status = 'absent'`
-      )
-        .bind(employee.id, `${period}%`)
-        .first<{ n: number }>();
+      // Not clocking in has no effect on pay — deductions come only from leave.
 
       // Unpaid leave days that fall inside the period (leave requests store
       // ranges, so expand them to business days and count those in-period).
@@ -48,7 +42,7 @@ app.get("/admin/payroll", async (c) => {
         .first<{ total: number }>();
       const reimbursements = reimbursementRow?.total ?? 0;
 
-      const unpaidDays = (absentRow?.n ?? 0) + unpaidLeaveDays;
+      const unpaidDays = unpaidLeaveDays;
       const paidDays = Math.max(WORKING_DAYS_PER_MONTH - unpaidDays, 0);
       const dailyRate = employee.monthly_salary / WORKING_DAYS_PER_MONTH;
       const deductions = Math.round(dailyRate * unpaidDays);

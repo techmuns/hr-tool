@@ -25,7 +25,7 @@ function HrApp() {
     return <AdminDashboard onLogout={logout} />;
   }
 
-  return <EmployeeDashboard onLogout={logout} />;
+  return <EmployeeDashboard />;
 }
 
 export default function App() {

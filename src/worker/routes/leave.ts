@@ -9,12 +9,12 @@ const app = new Hono<AppEnv>();
 app.use("*", requireEmployee);
 
 const MAX_MARK_LEAVE_DAYS = 60;
-// Annual paid-leave allowance. Leave beyond this in a calendar year is unpaid.
+// Monthly paid-leave allowance. Leave beyond this in a calendar month is unpaid.
 // This is the "logic" that decides paid vs unpaid — the employee never picks.
-const PAID_LEAVE_DAYS_PER_YEAR = 12;
+const PAID_LEAVE_DAYS_PER_MONTH = 3;
 
-function yearOf(isoDate: string): number {
-  return Number(isoDate.slice(0, 4));
+function monthOf(isoDate: string): string {
+  return isoDate.slice(0, 7);
 }
 
 app.get("/leave/me", async (c) => {
@@ -43,10 +43,10 @@ app.post("/leave", async (c) => {
 
   const dates = businessDaysFrom(days);
 
-  // Paid-leave allowance already used per relevant calendar year.
-  const years = [...new Set(dates.map(yearOf))];
-  const remaining = new Map<number, number>();
-  for (const year of years) {
+  // Paid-leave allowance already used per relevant calendar month.
+  const months = [...new Set(dates.map(monthOf))];
+  const remaining = new Map<string, number>();
+  for (const month of months) {
     const paidLeaves = await c.env.DB.prepare(
       "SELECT start_date, end_date FROM leave_requests WHERE employee_id = ? AND leave_type = 'paid' AND status = 'approved'"
     )
@@ -54,17 +54,17 @@ app.post("/leave", async (c) => {
       .all<{ start_date: string; end_date: string }>();
     let used = 0;
     for (const l of paidLeaves.results) {
-      used += businessDaysInRange(l.start_date, l.end_date).filter((d) => yearOf(d) === year).length;
+      used += businessDaysInRange(l.start_date, l.end_date).filter((d) => monthOf(d) === month).length;
     }
-    remaining.set(year, Math.max(PAID_LEAVE_DAYS_PER_YEAR - used, 0));
+    remaining.set(month, Math.max(PAID_LEAVE_DAYS_PER_MONTH - used, 0));
   }
 
   // Assign a type to each day, then group into contiguous same-type runs.
   const typed = dates.map((date) => {
-    const year = yearOf(date);
-    const left = remaining.get(year) ?? 0;
+    const month = monthOf(date);
+    const left = remaining.get(month) ?? 0;
     const type: LeaveType = left > 0 ? "paid" : "unpaid";
-    if (left > 0) remaining.set(year, left - 1);
+    if (left > 0) remaining.set(month, left - 1);
     return { date, type };
   });
 
