@@ -6,9 +6,21 @@ binding.
 
 ## Login
 
-Single text box on `/`. Typing `admin` signs in as HR; typing `employee` signs in
-as a sample employee. No passwords — identity is a demo-grade `x-user-id` /
-`x-role` header pair stored in `localStorage`.
+The dashboard is embedded in the Munshot host as an iframe and never runs its
+own login screen. Identity comes from the host: the Munshot Dashboard SDK
+delivers a session (JWT + email) via `host:init`/`host:context:update`, and
+the app resolves the matching `employees` row by that email on every load —
+see `src/web/App.tsx`. There are no passwords and no locally-typed
+role/email shortcuts; an employee row must exist with a matching `email` for
+sign-in to succeed. Because the app never persists the resolved identity
+across page loads, it's always re-derived fresh from whatever host session is
+currently active, so one person's browser can never keep showing a
+previously-resolved different employee's data.
+
+Running the SPA standalone outside the Munshot host (e.g. a bare
+`npm run dev:worker` in a normal browser tab) has no host to supply a
+session, so it will sit on "Waiting for session…" indefinitely — this app is
+only fully usable embedded in Munshot.
 
 ## Setup
 

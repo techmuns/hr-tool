@@ -4,42 +4,22 @@ import type { Employee } from "../types";
 
 const app = new Hono<AppEnv>();
 
+// Resolves the employee for the email the Munshot host asserts for the
+// current user (session.email from the host JWT — see useHostContext). This
+// is the only identity input: there is no separate username/password or
+// role-selection flow, so a request here can only ever resolve to the
+// account matching the caller's host-asserted email.
 app.post("/login", async (c) => {
-  const body = await c.req.json<{ text?: string }>().catch(() => ({}) as { text?: string });
-  const text = (body.text ?? "").trim().toLowerCase();
+  const body = await c.req.json<{ email?: string }>().catch(() => ({}) as { email?: string });
+  const email = (body.email ?? "").trim().toLowerCase();
+  if (!email) return c.json({ error: "email is required" }, 400);
 
-  if (text === "admin") {
-    const admin = await c.env.DB.prepare(
-      "SELECT * FROM employees WHERE role = 'admin' ORDER BY (tier = 'founder') DESC, id LIMIT 1"
-    ).first<Employee>();
-    if (!admin) return c.json({ error: "No admin account seeded" }, 500);
-    const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
-    return c.json({ role: "admin", employee: admin, employees: employees.results });
-  }
+  const employee = await c.env.DB.prepare("SELECT * FROM employees WHERE lower(email) = ?")
+    .bind(email)
+    .first<Employee>();
+  if (!employee) return c.json({ error: "No HR Tool account found for this email" }, 404);
 
-  if (text === "hr") {
-    const hr = await c.env.DB.prepare("SELECT * FROM employees WHERE tier = 'hr' ORDER BY id LIMIT 1").first<Employee>();
-    if (!hr) return c.json({ error: "No HR account yet — ask a founder to assign one" }, 500);
-    return c.json({ role: "admin", employee: hr });
-  }
-
-  if (text === "employee") {
-    const employee = await c.env.DB.prepare(
-      "SELECT * FROM employees WHERE role = 'employee' ORDER BY id LIMIT 1"
-    ).first<Employee>();
-    if (!employee) return c.json({ error: "No employee account seeded" }, 500);
-    return c.json({ role: "employee", employee });
-  }
-
-  if (text.includes("@")) {
-    const employee = await c.env.DB.prepare("SELECT * FROM employees WHERE lower(email) = ?")
-      .bind(text)
-      .first<Employee>();
-    if (!employee) return c.json({ error: "No account with that email" }, 404);
-    return c.json({ role: employee.role, employee });
-  }
-
-  return c.json({ error: "Type 'admin', 'hr', 'employee', or your email to continue" }, 400);
+  return c.json({ role: employee.role, employee });
 });
 
 export default app;

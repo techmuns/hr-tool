@@ -1,27 +1,26 @@
 import type { EmployeeRole, Tier } from "./types";
 
-const KEY = "hr.session";
-
 export interface Session {
   role: EmployeeRole;
   employeeId: number;
   tier: Tier;
+  // The host-asserted email (from the Munshot JWT) this session was resolved
+  // for. Held in memory only, never persisted — identity always comes fresh
+  // from the host on each load, so a session for one person can never leak
+  // into another person's browser/tab/session.
+  email: string;
 }
 
+let current: Session | null = null;
+
 export function getSession(): Session | null {
-  const raw = localStorage.getItem(KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Session;
-  } catch {
-    return null;
-  }
+  return current;
 }
 
 export function setSession(session: Session): void {
-  localStorage.setItem(KEY, JSON.stringify(session));
+  current = session;
 }
 
 export function clearSession(): void {
-  localStorage.removeItem(KEY);
+  current = null;
 }
