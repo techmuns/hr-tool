@@ -65,7 +65,6 @@ export function Payroll() {
             <th>Base Salary</th>
             <th>Reimbursements</th>
             <th>Paid Days</th>
-            <th>Unpaid Days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
             <th></th>
@@ -78,7 +77,6 @@ export function Payroll() {
               <td>{formatINR(row.base_salary)}</td>
               <td>{formatINR(row.reimbursements)}</td>
               <td>{row.paid_days}</td>
-              <td>{row.unpaid_days}</td>
               <td>{formatINR(row.deductions)}</td>
               <td>{formatINR(row.net_pay)}</td>
               <td>
@@ -96,7 +94,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={8} className="muted">
+              <td colSpan={7} className="muted">
                 No payroll for this period yet. Click Generate.
               </td>
             </tr>
