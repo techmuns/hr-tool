@@ -24,6 +24,13 @@ export interface MonthOption {
   label: string; // "July 2026"
 }
 
+/**
+ * Earliest date the app surfaces in attendance views. Anything before this is
+ * pre-launch noise (no real records), so the grids and month picker hide it.
+ */
+export const EARLIEST_VISIBLE_DATE = "2026-07-19";
+const EARLIEST_VISIBLE_MONTH = EARLIEST_VISIBLE_DATE.slice(0, 7); // "2026-07"
+
 /** Recent months, newest first, for the attendance month picker. */
 export function recentMonths(count = 12): MonthOption[] {
   const now = new Date();
@@ -34,18 +41,21 @@ export function recentMonths(count = 12): MonthOption[] {
     const label = d.toLocaleDateString([], { month: "long", year: "numeric" });
     options.push({ value, label });
   }
-  return options;
+  return options.filter((o) => o.value >= EARLIEST_VISIBLE_MONTH);
 }
 
 /**
- * Every day-of-month number for a "YYYY-MM" month, oldest→newest. Leave can
- * be marked ahead of time, so future days can carry data too — the grid
- * always shows the whole month rather than stopping at today.
+ * Every day-of-month number for a "YYYY-MM" month, oldest→newest, excluding any
+ * date before EARLIEST_VISIBLE_DATE. Leave can be marked ahead of time, so
+ * future days can carry data too — the grid shows the rest of the month rather
+ * than stopping at today.
  */
 export function daysForMonth(month: string): number[] {
   const [year, mon] = month.split("-").map(Number);
   const daysInMonth = new Date(year, mon, 0).getDate();
-  return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  return Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(
+    (day) => dayKey(month, day) >= EARLIEST_VISIBLE_DATE,
+  );
 }
 
 export function dayKey(month: string, day: number): string {
