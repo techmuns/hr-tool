@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
-import { currentMonth, formatTime, todayISODate } from "../date";
+import { currentMonth, formatDayLabel, formatTime, istClockParts, todayISODate } from "../date";
 import type { Attendance } from "../types";
 
 /** Live "now", refreshed every second so the clock actually ticks. */
@@ -33,10 +33,10 @@ function hand(angleDeg: number, length: number): { x: number; y: number } {
   return { x: 84 + length * Math.cos(rad), y: 84 + length * Math.sin(rad) };
 }
 
-function AnalogClock({ now }: { now: Date }) {
-  const s = now.getSeconds();
-  const m = now.getMinutes();
-  const h = now.getHours() % 12;
+function AnalogClock({ parts }: { parts: { hours: number; minutes: number; seconds: number } }) {
+  const s = parts.seconds;
+  const m = parts.minutes;
+  const h = parts.hours % 12;
 
   const secAngle = s * 6;
   const minAngle = m * 6 + s * 0.1;
@@ -149,17 +149,14 @@ export function ClockCard({ onChange }: { onChange?: () => void }) {
 
   const statusLabel = status === "working" ? "Working" : status === "done" ? "Shift complete" : "Not clocked in";
   const actionLabel = status === "idle" ? "Clock In" : "Clock Out";
-  const dateLabel = now.toLocaleDateString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const ist = istClockParts(now);
+  const dateLabel = formatDayLabel(now);
 
   return (
     <Card title="Today">
       <div className={`clock-card ${status === "working" ? "is-working" : ""}`.trim()}>
         <div className="clock-face-wrap">
-          <AnalogClock now={now} />
+          <AnalogClock parts={ist} />
         </div>
 
         <div className="clock-body">
@@ -167,9 +164,9 @@ export function ClockCard({ onChange }: { onChange?: () => void }) {
 
           <div className="clock-digital">
             <span>
-              {pad(now.getHours())}:{pad(now.getMinutes())}
+              {pad(ist.hours)}:{pad(ist.minutes)}
             </span>
-            <span className="sec">{pad(now.getSeconds())}</span>
+            <span className="sec">{pad(ist.seconds)}</span>
           </div>
 
           <span className={`clock-status ${status}`}>

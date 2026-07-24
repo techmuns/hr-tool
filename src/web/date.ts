@@ -1,3 +1,8 @@
+// All times come from the worker as UTC ISO strings and are displayed in IST,
+// so everyone sees the same clock regardless of their device's timezone.
+const IST = "Asia/Kolkata";
+const LOCALE = "en-IN";
+
 export function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -8,15 +13,41 @@ export function currentMonth(): string {
 
 export function formatTime(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(LOCALE, { timeZone: IST, hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return new Date(iso).toLocaleDateString(LOCALE, { timeZone: IST, month: "short", day: "numeric", year: "numeric" });
 }
 
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(LOCALE, {
+    timeZone: IST,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** IST hours (0–23), minutes and seconds for a given instant — for the live clock. */
+export function istClockParts(d: Date): { hours: number; minutes: number; seconds: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  let hours = get("hour");
+  if (hours === 24) hours = 0; // en-GB renders midnight as "24"
+  return { hours, minutes: get("minute"), seconds: get("second") };
+}
+
+/** e.g. "Friday, July 24" in IST. */
+export function formatDayLabel(d: Date): string {
+  return d.toLocaleDateString(LOCALE, { timeZone: IST, weekday: "long", month: "long", day: "numeric" });
 }
 
 export interface MonthOption {

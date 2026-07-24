@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import { formatDate } from "./date";
 import type { PayrollWithName } from "./types";
 
 // jsPDF's built-in Helvetica font only supports WinAnsi (Windows-1252), which
@@ -35,7 +36,7 @@ export function exportPayrollPdf(period: string, rows: PayrollWithName[]) {
   doc.text(`Payroll — ${period}`, MARGIN, 18);
   doc.setFontSize(9);
   doc.setTextColor(120);
-  doc.text(`Generated ${new Date().toLocaleDateString()}`, MARGIN, 24);
+  doc.text(`Generated ${formatDate(new Date().toISOString())} IST`, MARGIN, 24);
   doc.setTextColor(0);
 
   let y = 34;
