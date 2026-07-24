@@ -1,4 +1,6 @@
 import { getSession } from "./session";
+import { currentMonth } from "./date";
+import type { Attendance, EmployeeWithTeam, LeaveRequest, Reimbursement } from "./types";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const session = getSession();
@@ -92,3 +94,52 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => mutate<T>(path, "PATCH", body),
   del: <T>(path: string) => mutate<T>(path, "DELETE"),
 };
+
+// --- Employee home bootstrap -------------------------------------------------
+// Fetch /me, attendance, leave and reimbursements in ONE request and seed the
+// cache under the exact keys the individual components use, so they resolve
+// from the single batched call instead of firing four separate ones. If the
+// bootstrap request fails, each key transparently falls back to its own
+// endpoint — behaviour identical to not having bootstrap at all.
+
+interface BootstrapResponse {
+  me: EmployeeWithTeam;
+  attendance: Attendance[];
+  leave: LeaveRequest[];
+  reimbursements: Reimbursement[];
+}
+
+export function primeEmployeeBootstrap(): void {
+  const scope = userScope();
+  if (scope === "anon") return;
+
+  // Skip if /me is already warm or in-flight (the four keys are primed together).
+  const meHit = cache.get(`${scope}:/me`);
+  if (meHit && (meHit.promise || (meHit.data !== undefined && Date.now() - meHit.at < DEFAULT_TTL))) {
+    return;
+  }
+
+  const month = currentMonth();
+  const boot = request<BootstrapResponse>(`/employee/bootstrap?month=${month}`);
+
+  const derive = <T>(path: string, pick: (b: BootstrapResponse) => T): void => {
+    const key = `${scope}:${path}`;
+    const p = boot
+      .then(pick)
+      .catch(() => request<T>(path)) // bootstrap failed → fall back to the real endpoint
+      .then((data) => {
+        cache.set(key, { at: Date.now(), data });
+        return data;
+      })
+      .catch((err) => {
+        cache.delete(key);
+        throw err;
+      });
+    cache.set(key, { at: Date.now(), promise: p });
+  };
+
+  derive("/me", (b) => b.me);
+  derive(`/attendance/me?month=${month}`, (b) => b.attendance);
+  derive("/leave/me", (b) => b.leave);
+  derive("/reimbursements/me", (b) => b.reimbursements);
+}

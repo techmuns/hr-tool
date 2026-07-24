@@ -1,11 +1,54 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee, requireFounder } from "../auth";
-import type { Employee, EmployeeWithTeam, LeaveRequest, Payroll, Reimbursement, Tier, WorkMode } from "../types";
+import type {
+  Attendance,
+  Employee,
+  EmployeeWithTeam,
+  LeaveRequest,
+  Payroll,
+  Reimbursement,
+  Tier,
+  WorkMode,
+} from "../types";
 
 const app = new Hono<AppEnv>();
 
 app.use("*", requireEmployee);
+
+/**
+ * One-shot payload for the employee home view: profile, this month's
+ * attendance, leave requests and reimbursements — all in a single D1 batch
+ * (one round-trip) instead of four separate requests.
+ */
+app.get("/employee/bootstrap", async (c) => {
+  const employee = c.get("employee");
+  const month = c.req.query("month") || new Date().toISOString().slice(0, 7);
+
+  const [meRes, attRes, leaveRes, reimbRes] = await c.env.DB.batch([
+    c.env.DB.prepare(
+      `SELECT e.*, t.name AS team_name FROM employees e
+       LEFT JOIN teams t ON t.id = e.team_id
+       WHERE e.id = ?`
+    ).bind(employee.id),
+    c.env.DB.prepare(
+      "SELECT * FROM attendance WHERE employee_id = ? AND work_date LIKE ? ORDER BY work_date DESC"
+    ).bind(employee.id, `${month}%`),
+    c.env.DB.prepare(
+      "SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC"
+    ).bind(employee.id),
+    c.env.DB.prepare(
+      "SELECT * FROM reimbursements WHERE employee_id = ? ORDER BY created_at DESC"
+    ).bind(employee.id),
+  ]);
+
+  return c.json({
+    me: (meRes.results?.[0] as EmployeeWithTeam) ?? null,
+    attendance: (attRes.results ?? []) as Attendance[],
+    leave: (leaveRes.results ?? []) as LeaveRequest[],
+    reimbursements: (reimbRes.results ?? []) as Reimbursement[],
+  });
+});
 
 app.get("/me", async (c) => {
   const employee = c.get("employee");
