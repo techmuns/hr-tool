@@ -372,34 +372,76 @@ tbody tr:last-child td {
   align-items: center;
   justify-content: center;
   padding: 20px;
+  background:
+    radial-gradient(900px 420px at 50% -12%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 68%),
+    var(--bg);
 }
 
 .login-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 380px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 28px;
+  border-radius: 18px;
+  padding: 30px 30px 32px;
   box-shadow: var(--shadow);
 }
 
+.login-badge {
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: var(--primary-text);
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--primary) 35%, transparent);
+  margin-bottom: 18px;
+}
+
 .login-card h1 {
-  font-size: 19px;
-  margin-top: 0;
+  font-size: 23px;
+  margin: 0 0 4px;
   letter-spacing: -0.02em;
+}
+
+.login-sub {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 0 0 22px;
+}
+
+.login-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 7px;
+  display: block;
+}
+
+.login-card .field {
+  margin-bottom: 16px;
+}
+
+.login-card input {
+  padding: 11px 13px;
+  border-radius: 10px;
 }
 
 .login-top {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: -8px;
+  margin-bottom: 2px;
 }
 
 .error-text {
   color: var(--absent);
   font-size: 13px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 /* Chat */
