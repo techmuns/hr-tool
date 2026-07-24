@@ -175,6 +175,7 @@ interface EmployeeWriteBody {
   work_mode?: WorkMode;
   employment_type?: EmploymentType;
   on_payroll?: boolean;
+  on_attendance?: boolean;
   date_of_joining?: string;
   monthly_salary?: number;
   team_id?: number | null;
@@ -206,6 +207,7 @@ app.post("/employees", requireAdmin, async (c) => {
   const work_mode = normalizeWorkMode(body.work_mode, "in-office");
   const employment_type = normalizeEmploymentType(body.employment_type, "employee");
   const on_payroll = typeof body.on_payroll === "boolean" ? (body.on_payroll ? 1 : 0) : 1;
+  const on_attendance = typeof body.on_attendance === "boolean" ? (body.on_attendance ? 1 : 0) : 1;
   const date_of_joining =
     typeof body.date_of_joining === "string" && body.date_of_joining
       ? body.date_of_joining
@@ -216,10 +218,10 @@ app.post("/employees", requireAdmin, async (c) => {
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : "";
 
   const result = await c.env.DB.prepare(
-    `INSERT INTO employees (name, email, location, work_mode, employment_type, on_payroll, date_of_joining, role, monthly_salary, team_id, job_title)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
+    `INSERT INTO employees (name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, role, monthly_salary, team_id, job_title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
   )
-    .bind(name, email, location, work_mode, employment_type, on_payroll, date_of_joining, monthly_salary, team_id, job_title)
+    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, team_id, job_title)
     .run();
 
   const created = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
@@ -241,6 +243,8 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
   const work_mode = normalizeWorkMode(body.work_mode, existing.work_mode);
   const employment_type = normalizeEmploymentType(body.employment_type, existing.employment_type);
   const on_payroll = typeof body.on_payroll === "boolean" ? (body.on_payroll ? 1 : 0) : existing.on_payroll;
+  const on_attendance =
+    typeof body.on_attendance === "boolean" ? (body.on_attendance ? 1 : 0) : existing.on_attendance;
   const date_of_joining =
     typeof body.date_of_joining === "string" && body.date_of_joining ? body.date_of_joining : existing.date_of_joining;
   const monthly_salary =
@@ -251,10 +255,10 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : existing.job_title;
 
   await c.env.DB.prepare(
-    `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, employment_type = ?, on_payroll = ?, date_of_joining = ?,
+    `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, employment_type = ?, on_payroll = ?, on_attendance = ?, date_of_joining = ?,
      monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
   )
-    .bind(name, email, location, work_mode, employment_type, on_payroll, date_of_joining, monthly_salary, team_id, job_title, id)
+    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, team_id, job_title, id)
     .run();
 
   const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();

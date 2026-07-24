@@ -60,6 +60,7 @@ export function AttendanceTable() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [saving, setSaving] = useState(false);
   const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const months = useMemo(() => recentMonths(12), []);
@@ -71,8 +72,9 @@ export function AttendanceTable() {
       api.get<AttendanceWithName[]>(`/admin/attendance?month=${month}`),
     ])
       .then(([emps, att]) => {
-        // Everyone tracked for attendance: employees + HR/founders, but not freelancers.
-        setEmployees(emps.filter((e) => e.employment_type !== "freelancer"));
+        // Everyone tracked for attendance: employees + HR/founders, but not
+        // freelancers or anyone HR has removed from the list.
+        setEmployees(emps.filter((e) => e.employment_type !== "freelancer" && e.on_attendance !== 0));
         setAttendance(att);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
@@ -132,6 +134,22 @@ export function AttendanceTable() {
     const x = Math.min(rect.left, window.innerWidth - MENU_W - 12);
     const y = rect.bottom + 4 + MENU_H > window.innerHeight ? rect.top - MENU_H - 4 : rect.bottom + 4;
     setEditing({ employee, day, cell, x: Math.max(12, x), y: Math.max(12, y) });
+  }
+
+  async function removeFromAttendance(employee: EmployeeWithTeam) {
+    if (!window.confirm(`Remove ${employee.name} from the attendance list? Their records are kept; re-add them from their employee panel.`)) {
+      return;
+    }
+    setRemovingId(employee.id);
+    setError(null);
+    try {
+      await api.del(`/admin/attendance/employee/${employee.id}`);
+      setEmployees((list) => list.filter((e) => e.id !== employee.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove from attendance");
+    } finally {
+      setRemovingId(null);
+    }
   }
 
   async function setStatus(status: AttendanceStatus) {
@@ -213,9 +231,20 @@ export function AttendanceTable() {
               return (
                 <tr key={emp.id} className="hm-row-band">
                   <td className="hm-name">
-                    <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
-                      {emp.name}
-                    </button>
+                    <div className="hm-name-row">
+                      <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
+                        {emp.name}
+                      </button>
+                      <button
+                        type="button"
+                        className="row-remove-btn"
+                        title={`Remove ${emp.name} from the attendance list`}
+                        disabled={removingId === emp.id}
+                        onClick={() => removeFromAttendance(emp)}
+                      >
+                        ✕
+                      </button>
+                    </div>
                     <span className="hm-name-sub">{subtitle}</span>
                   </td>
                   {days.map((day) => {

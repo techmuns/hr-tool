@@ -112,4 +112,20 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
   return c.json(row);
 });
 
+/**
+ * Remove someone from the attendance list: flag them off-attendance so they no
+ * longer appear in the admin attendance grid. Their existing records are kept.
+ * Re-add them from the employee panel's "Include in attendance list" toggle.
+ */
+app.delete("/admin/attendance/employee/:id", requireAdmin, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (Number.isNaN(id)) return c.json({ error: "Invalid employee id" }, 400);
+
+  const existing = await c.env.DB.prepare("SELECT id FROM employees WHERE id = ?").bind(id).first();
+  if (!existing) return c.json({ error: "Employee not found" }, 404);
+
+  await c.env.DB.prepare("UPDATE employees SET on_attendance = 0 WHERE id = ?").bind(id).run();
+  return c.json({ ok: true });
+});
+
 export default app;

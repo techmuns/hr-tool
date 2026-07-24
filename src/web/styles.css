@@ -864,6 +864,20 @@ thead .hm-name {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.hm-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: space-between;
+}
+.hm-name-row .row-remove-btn {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.hm-row-band:hover .hm-name-row .row-remove-btn,
+.hm-name-row .row-remove-btn:focus-visible {
+  opacity: 1;
+}
 
 /* Employee detail drawer */
 .drawer-backdrop {
