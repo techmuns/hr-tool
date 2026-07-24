@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --indigo: #4f46e5;
+        --indigo-dark: #4338ca;
+        --bg: #ffffff;
+        --fg: #111827;
+        --muted: #6b7280;
+        --border: #e5e7eb;
+        --ok: #059669;
+        --err: #dc2626;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f2937;
+          --fg: #f9fafb;
+          --muted: #9ca3af;
+          --border: #374151;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        width: 300px;
+        margin: 0;
+        padding: 16px;
+        font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      h1 { font-size: 15px; margin: 0 0 12px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+      input {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--fg);
+        font-size: 14px;
+      }
+      button {
+        width: 100%;
+        padding: 9px 12px;
+        border: 0;
+        border-radius: 8px;
+        background: var(--indigo);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+      button:hover { background: var(--indigo-dark); }
+      button.secondary { background: transparent; color: var(--indigo); border: 1px solid var(--border); }
+      .row { display: flex; gap: 8px; }
+      .row button { margin-top: 0; }
+      .status { margin-top: 10px; font-size: 12px; min-height: 16px; }
+      .status.ok { color: var(--ok); }
+      .status.err { color: var(--err); }
+      .who { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+      .who strong { color: var(--fg); }
+      .hint { font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
+      .hint kbd {
+        font: inherit; background: var(--border); border-radius: 4px;
+        padding: 1px 5px; font-size: 11px;
+      }
+      a { color: var(--indigo); }
+      hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <h1>HR Tool Attendance</h1>
+
+    <!-- Setup view: shown until connected -->
+    <div id="setup">
+      <label for="baseUrl">HR tool URL</label>
+      <input id="baseUrl" type="url" placeholder="https://hr-tool.your-domain.workers.dev" />
+      <label for="email">Your work email</label>
+      <input id="email" type="email" placeholder="you@company.com" />
+      <button id="connect">Connect</button>
+    </div>
+
+    <!-- Connected view -->
+    <div id="connected" class="hidden">
+      <div class="who">Signed in as <strong id="who-name"></strong></div>
+      <div class="row">
+        <button id="clockIn">Clock in</button>
+        <button id="clockOut" class="secondary">Clock out</button>
+      </div>
+      <hr />
+      <button id="disconnect" class="secondary">Disconnect</button>
+    </div>
+
+    <div id="status" class="status" role="status"></div>
+
+    <div class="hint">
+      Shortcuts: <kbd id="kb-in">Alt+Shift+I</kbd> clock in ·
+      <kbd id="kb-out">Alt+Shift+O</kbd> clock out.<br />
+      Change them at <a href="#" id="shortcuts-link">chrome://extensions/shortcuts</a>.
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
