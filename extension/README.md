@@ -17,9 +17,23 @@ clicks to finish.
   (or run `powershell -ExecutionPolicy Bypass -File install-hr-attendance.ps1`).
 - **macOS / Linux:** run `bash install-hr-attendance.sh`.
 
-Then in Brave/Chrome: `brave://extensions` → **Developer mode** on →
+Then open your browser's extensions page → **Developer mode** on →
 **Load unpacked** → paste the copied path → pick the folder. Click the pinned
 **HR Tool Attendance**, sign in with your work email + the emailed code.
+
+It's a standard Chromium extension, so the **same folder works in every
+Chromium browser** — only the extensions-page URL differs:
+
+| Browser | Extensions page |
+| ------- | --------------- |
+| Chrome  | `chrome://extensions` |
+| Edge    | `edge://extensions` (Developer mode toggle is bottom-left) |
+| Brave   | `brave://extensions` |
+| Opera   | `opera://extensions` |
+| Vivaldi | `vivaldi://extensions` |
+
+> **Firefox** uses a different add-on model — this build isn't packaged for it.
+> Ask if you need a Firefox version.
 
 > The installers are generated from this folder by
 > `scripts/build-installers.py`; re-run it after changing any extension file.
