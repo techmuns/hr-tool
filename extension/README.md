@@ -85,6 +85,28 @@ Change the shortcuts at `chrome://extensions/shortcuts`. You can also use the
 > Clock-out requires you to have clocked in first that day — the backend returns
 > "Clock in before clocking out" otherwise, and the extension shows it.
 
+## Updates
+
+Locally-loaded (unpacked) extensions **do not auto-update** — that's a browser
+restriction, not a bug. To avoid people silently running stale builds, the
+extension checks `GET /api/extension/version` on the Worker (on install, on
+browser start, and every 6 hours) and compares it against its own version. When
+a newer version is published it shows an amber **↑** badge and an "Update
+available" banner in the popup.
+
+To publish an update:
+
+1. Change the extension files and bump `"version"` in `manifest.json`.
+2. Set `EXTENSION_LATEST` in `src/worker/routes/extension.ts` to the same value
+   and deploy the Worker.
+3. Re-run `python3 scripts/build-installers.py` and share the new installer.
+   Teammates re-run it, then click **Reload** on their extensions page (or
+   restart the browser) to pick up the new files.
+
+For real *silent* auto-update, publish to the Chrome Web Store / Edge Add-ons
+(an unlisted listing works) or force-install via an enterprise (MDM) policy —
+both handle updates natively. Ask if you want either set up.
+
 ## Security note
 
 Connecting now requires an email OTP, so a device can only act as an employee

@@ -9,10 +9,12 @@ import chatRoutes from "./routes/chat";
 import payrollRoutes from "./routes/payroll";
 import teamRoutes from "./routes/teams";
 import roleRoutes from "./routes/roles";
+import extensionRoutes from "./routes/extension";
 
 const app = new Hono<AppEnv>();
 
 app.route("/api", authRoutes);
+app.route("/api", extensionRoutes);
 app.route("/api", employeeRoutes);
 app.route("/api", attendanceRoutes);
 app.route("/api", leaveRoutes);
