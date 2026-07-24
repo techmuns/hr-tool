@@ -13,6 +13,7 @@ import {
   WORKING_DAYS_PER_MONTH,
 } from "../date";
 import { scrollToToday } from "../scrollToToday";
+import { confirmDialog } from "../confirm";
 import type { AttendanceStatus, AttendanceWithName, Employee, EmployeeWithTeam } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
 
@@ -137,9 +138,11 @@ export function AttendanceTable() {
   }
 
   async function removeFromAttendance(employee: EmployeeWithTeam) {
-    if (!window.confirm(`Remove ${employee.name} from the attendance list? Their records are kept; re-add them from their employee panel.`)) {
-      return;
-    }
+    const ok = await confirmDialog(
+      `Remove ${employee.name} from the attendance list? Their records are kept; re-add them from their employee panel.`,
+      { confirmLabel: "Remove", danger: true },
+    );
+    if (!ok) return;
     setRemovingId(employee.id);
     setError(null);
     try {

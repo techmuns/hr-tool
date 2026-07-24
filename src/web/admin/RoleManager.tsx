@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { confirmDialog } from "../confirm";
 import { Button } from "../components/ui/Button";
 import type { Role } from "../types";
 
@@ -34,7 +35,11 @@ export function RoleManager({
   }
 
   async function removeRole(id: number) {
-    if (!window.confirm("Delete this role? Employees currently on it keep their job title.")) return;
+    const ok = await confirmDialog("Delete this role? Employees currently on it keep their job title.", {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setRemovingId(id);
     setError(null);
     try {

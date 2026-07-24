@@ -3,6 +3,7 @@ import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { currentMonth } from "../date";
+import { confirmDialog } from "../confirm";
 import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import type { PayrollWithName } from "../types";
@@ -27,9 +28,11 @@ export function Payroll() {
   useEffect(() => load(), [period]);
 
   async function removeFromPayroll(employeeId: number, name: string) {
-    if (!window.confirm(`Remove ${name} from payroll? They'll be skipped in future runs until re-added from their employee panel.`)) {
-      return;
-    }
+    const ok = await confirmDialog(
+      `Remove ${name} from payroll? They'll be skipped in future runs until re-added from their employee panel.`,
+      { confirmLabel: "Remove", danger: true },
+    );
+    if (!ok) return;
     setRemovingId(employeeId);
     setError(null);
     try {

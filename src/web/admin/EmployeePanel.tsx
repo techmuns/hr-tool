@@ -5,6 +5,7 @@ import { Tag } from "../components/ui/Tag";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
 import { getSession } from "../session";
+import { confirmDialog } from "../confirm";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
 import type {
@@ -167,7 +168,11 @@ export function EmployeePanel({
 
   async function remove() {
     if (isNew || !employee) return;
-    if (!window.confirm(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`)) return;
+    const ok = await confirmDialog(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`, {
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -196,7 +201,8 @@ export function EmployeePanel({
   }
 
   async function removeReimbursement(id: number) {
-    if (!window.confirm("Remove this reimbursement?")) return;
+    const ok = await confirmDialog("Remove this reimbursement?", { confirmLabel: "Remove", danger: true });
+    if (!ok) return;
     setRemovingReimId(id);
     setError(null);
     try {

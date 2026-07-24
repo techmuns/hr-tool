@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { confirmDialog } from "../confirm";
 import { Button } from "../components/ui/Button";
 import type { Team } from "../types";
 
@@ -34,7 +35,11 @@ export function TeamManager({
   }
 
   async function removeTeam(id: number) {
-    if (!window.confirm("Delete this team? Employees on it will become unassigned.")) return;
+    const ok = await confirmDialog("Delete this team? Employees on it will become unassigned.", {
+      confirmLabel: "Delete",
+      danger: true,
+    });
+    if (!ok) return;
     setRemovingId(id);
     setError(null);
     try {
