@@ -25,6 +25,7 @@ interface FormState {
   location: string;
   work_mode: WorkMode;
   employment_type: EmploymentType;
+  on_payroll: boolean;
   date_of_joining: string;
   salaryRupees: string;
   team_id: number | null;
@@ -37,6 +38,7 @@ const EMPTY_FORM: FormState = {
   location: "",
   work_mode: "in-office",
   employment_type: "employee",
+  on_payroll: true,
   date_of_joining: "",
   salaryRupees: "",
   team_id: null,
@@ -50,6 +52,7 @@ function toForm(e: Employee): FormState {
     location: e.location,
     work_mode: e.work_mode,
     employment_type: e.employment_type,
+    on_payroll: e.on_payroll !== 0,
     date_of_joining: e.date_of_joining,
     salaryRupees: (e.monthly_salary / 100).toFixed(2),
     team_id: e.team_id,
@@ -137,6 +140,7 @@ export function EmployeePanel({
       location: form.location.trim(),
       work_mode: form.work_mode,
       employment_type: form.employment_type,
+      on_payroll: form.on_payroll,
       date_of_joining: form.date_of_joining,
       monthly_salary: Math.round((parseFloat(form.salaryRupees) || 0) * 100),
       team_id: form.team_id,
@@ -350,6 +354,17 @@ export function EmployeePanel({
                   value={form.salaryRupees}
                   onChange={(e) => set("salaryRupees", e.target.value)}
                 />
+              </div>
+              <div className="field">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.on_payroll}
+                    onChange={(e) => set("on_payroll", e.target.checked)}
+                    style={{ width: "auto" }}
+                  />
+                  Include in payroll
+                </label>
               </div>
 
               {!isNew && (

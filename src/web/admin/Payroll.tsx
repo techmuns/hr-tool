@@ -12,6 +12,7 @@ export function Payroll() {
   const [rows, setRows] = useState<PayrollWithName[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<number | null>(null);
 
   function load(generate = false) {
     setLoading(true);
@@ -24,6 +25,22 @@ export function Payroll() {
   }
 
   useEffect(() => load(), [period]);
+
+  async function removeFromPayroll(employeeId: number, name: string) {
+    if (!window.confirm(`Remove ${name} from payroll? They'll be skipped in future runs until re-added from their employee panel.`)) {
+      return;
+    }
+    setRemovingId(employeeId);
+    setError(null);
+    try {
+      await api.del(`/admin/payroll/employee/${employeeId}`);
+      setRows((rs) => rs.filter((r) => r.employee_id !== employeeId));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove from payroll");
+    } finally {
+      setRemovingId(null);
+    }
+  }
 
   return (
     <Card
@@ -51,6 +68,7 @@ export function Payroll() {
             <th>Unpaid Days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -63,11 +81,22 @@ export function Payroll() {
               <td>{row.unpaid_days}</td>
               <td>{formatINR(row.deductions)}</td>
               <td>{formatINR(row.net_pay)}</td>
+              <td>
+                <button
+                  type="button"
+                  className="row-remove-btn"
+                  title={`Remove ${row.employee_name} from payroll`}
+                  disabled={removingId === row.employee_id}
+                  onClick={() => removeFromPayroll(row.employee_id, row.employee_name)}
+                >
+                  ✕
+                </button>
+              </td>
             </tr>
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
+              <td colSpan={8} className="muted">
                 No payroll for this period yet. Click Generate.
               </td>
             </tr>

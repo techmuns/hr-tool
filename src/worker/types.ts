@@ -17,6 +17,7 @@ export interface Employee {
   role: EmployeeRole;
   tier: Tier;
   employment_type: EmploymentType;
+  on_payroll: number; // 0 | 1
   monthly_salary: number;
   created_at: string;
   team_id: number | null;
