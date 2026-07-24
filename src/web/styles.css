@@ -387,6 +387,48 @@ tbody tr:last-child td {
   box-shadow: var(--shadow);
 }
 
+.clock-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background:
+    radial-gradient(900px 420px at 50% -12%, color-mix(in srgb, var(--primary) 14%, transparent), transparent 68%),
+    var(--bg);
+}
+
+.clock-page-inner {
+  width: 100%;
+  max-width: 420px;
+}
+
+.clock-page-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.clock-page-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.clock-page-link {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.clock-page-link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
 .login-badge {
   width: 46px;
   height: 46px;
