@@ -30,13 +30,25 @@ function HrApp() {
 
 export default function App() {
   const { session } = useHostContext();
+  const [waited, setWaited] = useState(false);
 
   useEffect(() => {
     if (!session.token) return;
     console.info("[dashboard] token:", session.token);
   }, [session.token]);
 
-  if (!session.token) {
+  // When embedded in the Munshot host, host:init delivers a session token
+  // shortly after mount. When opened standalone (directly, or from a device
+  // outside the host) there is no host to send one — so instead of waiting
+  // forever, fall back to the app's own login after a brief grace period.
+  useEffect(() => {
+    const timer = setTimeout(() => setWaited(true), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const embedded = window.self !== window.top;
+
+  if (!session.token && embedded && !waited) {
     return <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>Waiting for session…</div>;
   }
 
