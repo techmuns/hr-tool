@@ -9,15 +9,19 @@ clock in from the web UI as well. No backend changes are required.
 
 ## How it works
 
-The HR tool identifies users with `x-user-id` / `x-role` headers (the same
-demo-grade identity the website uses). The extension:
+The HR tool identifies users with `x-user-id` / `x-role` headers. The extension:
 
-1. **Connect once** — you enter your work email in the popup. It calls
-   `POST /api/login` (exactly like the site) and stores your employee id + role
-   locally in `chrome.storage`.
+1. **Connect once (email OTP)** — you enter your work email; the backend emails
+   you a 6-digit code via the Muns email API (`POST /api/auth/request-otp`). You
+   enter the code (`POST /api/auth/verify-otp`), which proves you own the
+   address and returns your employee id + role, stored locally in
+   `chrome.storage`.
 2. **Punch anytime** — a keyboard shortcut (or the popup buttons) sends a
    `POST` to the clock-in / clock-out endpoint with those headers. You get a
    desktop notification with the result.
+
+The Worker URL (`https://hr-tool.tech-441.workers.dev`) is baked in, so there's
+nothing to configure beyond the one-time email verification.
 
 ## Install (load unpacked)
 
@@ -29,11 +33,13 @@ demo-grade identity the website uses). The extension:
 ## Connect
 
 1. Click the extension icon.
-2. Enter your **HR tool URL** (your deployed Worker, e.g.
-   `https://hr-tool.<your-subdomain>.workers.dev` or your custom domain).
-3. Enter your **work email** and click **Connect**.
+2. Enter your **work email** → **Send verification code**.
+3. Check your inbox, enter the **6-digit code** → **Verify & connect**.
 
 Once connected you'll see "Signed in as …".
+
+> Requires the `MUNS_TOKEN` secret to be set on the Worker
+> (`wrangler secret put MUNS_TOKEN`) so it can send the code email.
 
 ## Use
 
@@ -50,13 +56,13 @@ Change the shortcuts at `chrome://extensions/shortcuts`. You can also use the
 
 ## Security note
 
-The tool's identity is header-based (`x-user-id`), with no password or token —
-this is the same model the website already uses, so the extension is no less
-secure than the current site. If you later want device-bound auth (the OTP →
-device-token → `Authorization: Bearer` idea), that's a backend change: add a
-token table + a `/api/attendance/*` auth path that accepts a bearer token, then
-swap the header for that token in `background.js`. The extension is structured
-so only `background.js` would need to change.
+Connecting now requires an email OTP, so a device can only act as an employee
+who can read that employee's inbox. After verification the extension uses the
+same header-based identity (`x-user-id`) as the website for the actual
+clock-in / clock-out calls. If you later want fully device-bound auth
+(`Authorization: Bearer <device-token>`), that's a further backend change: issue
+a signed device token on verify and accept it on `/api/attendance/*`, then swap
+the header for that token in `background.js` — only `background.js` changes.
 
 ## Icons
 

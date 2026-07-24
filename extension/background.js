@@ -4,6 +4,7 @@
 // website. We store the employee id + role once (see popup.js) and replay them
 // on each clock-in / clock-out request.
 
+const DEFAULT_BASE_URL = "https://hr-tool.tech-441.workers.dev";
 const CLOCK_IN_PATH = "/api/attendance/clock-in";
 const CLOCK_OUT_PATH = "/api/attendance/clock-out";
 
@@ -14,7 +15,7 @@ async function getConfig() {
     "role",
     "name",
   ]);
-  return { baseUrl, employeeId, role, name };
+  return { baseUrl: baseUrl || DEFAULT_BASE_URL, employeeId, role, name };
 }
 
 function notify(title, message) {

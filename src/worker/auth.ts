@@ -4,6 +4,8 @@ import type { Employee } from "./types";
 export type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Bearer token for the Muns raw email API. Set via `wrangler secret put MUNS_TOKEN`. */
+  MUNS_TOKEN: string;
 };
 
 export type Variables = {

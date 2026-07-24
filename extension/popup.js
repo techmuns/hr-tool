@@ -1,7 +1,13 @@
-// Popup: one-time connect (email -> /api/login, same as the website), then
-// manual clock in/out buttons. The keyboard shortcuts work without opening this.
+// Popup: two-step OTP connect, then manual clock in/out buttons.
+//
+// Step 1: email -> POST /api/auth/request-otp (Muns sends a code)
+// Step 2: code  -> POST /api/auth/verify-otp  (returns the employee session)
+// The keyboard shortcuts work without opening this once connected.
 
+const BASE_URL = "https://hr-tool.tech-441.workers.dev";
 const $ = (id) => document.getElementById(id);
+
+let pendingEmail = "";
 
 function setStatus(msg, kind) {
   const el = $("status");
@@ -9,46 +15,73 @@ function setStatus(msg, kind) {
   el.className = "status" + (kind ? " " + kind : "");
 }
 
-function show(connected, name) {
-  $("setup").classList.toggle("hidden", connected);
-  $("connected").classList.toggle("hidden", !connected);
-  if (connected && name) $("who-name").textContent = name;
+function showStep(step, name) {
+  $("step-email").classList.toggle("hidden", step !== "email");
+  $("step-code").classList.toggle("hidden", step !== "code");
+  $("connected").classList.toggle("hidden", step !== "connected");
+  if (step === "connected" && name) $("who-name").textContent = name;
+  if (step === "code") $("code-email").textContent = pendingEmail;
+}
+
+async function post(path, body) {
+  const res = await fetch(BASE_URL + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => null);
+  return { res, data };
 }
 
 async function load() {
-  const cfg = await chrome.storage.local.get(["baseUrl", "employeeId", "role", "name"]);
-  if (cfg.baseUrl) $("baseUrl").value = cfg.baseUrl;
-  show(Boolean(cfg.employeeId), cfg.name);
+  const cfg = await chrome.storage.local.get(["employeeId", "name"]);
+  showStep(cfg.employeeId ? "connected" : "email", cfg.name);
 }
 
-async function connect() {
-  const baseUrl = $("baseUrl").value.trim().replace(/\/$/, "");
+async function sendCode() {
   const email = $("email").value.trim();
-  if (!baseUrl) return setStatus("Enter the HR tool URL.", "err");
   if (!email) return setStatus("Enter your work email.", "err");
 
-  setStatus("Connecting…");
+  $("sendCode").disabled = true;
+  setStatus("Sending code…");
   try {
-    const res = await fetch(baseUrl + "/api/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: email }),
-    });
-    const data = await res.json().catch(() => null);
+    const { res, data } = await post("/api/auth/request-otp", { email });
+    if (!res.ok) return setStatus((data && data.error) || "Could not send code.", "err");
+    pendingEmail = email;
+    showStep("code");
+    setStatus("Code sent. Check your inbox.", "ok");
+    $("code").focus();
+  } catch (err) {
+    setStatus(err && err.message ? err.message : "Network error.", "err");
+  } finally {
+    $("sendCode").disabled = false;
+  }
+}
+
+async function verify() {
+  const code = $("code").value.trim();
+  if (!code) return setStatus("Enter the code from your email.", "err");
+
+  $("verify").disabled = true;
+  setStatus("Verifying…");
+  try {
+    const { res, data } = await post("/api/auth/verify-otp", { email: pendingEmail, code });
     if (!res.ok || !data || !data.employee) {
-      return setStatus((data && data.error) || "Login failed.", "err");
+      return setStatus((data && data.error) || "Verification failed.", "err");
     }
     const emp = data.employee;
     await chrome.storage.local.set({
-      baseUrl,
+      baseUrl: BASE_URL,
       employeeId: emp.id,
       role: data.role || emp.role || "employee",
-      name: emp.name || email,
+      name: emp.name || pendingEmail,
     });
-    show(true, emp.name || email);
+    showStep("connected", emp.name || pendingEmail);
     setStatus("Connected. Try the shortcut!", "ok");
   } catch (err) {
     setStatus(err && err.message ? err.message : "Network error.", "err");
+  } finally {
+    $("verify").disabled = false;
   }
 }
 
@@ -62,7 +95,8 @@ function punch(action) {
 
 async function disconnect() {
   await chrome.storage.local.remove(["employeeId", "role", "name"]);
-  show(false);
+  pendingEmail = "";
+  showStep("email");
   setStatus("Disconnected.");
 }
 
@@ -78,10 +112,21 @@ async function initShortcutLabels() {
   }
 }
 
-$("connect").addEventListener("click", connect);
+$("sendCode").addEventListener("click", sendCode);
+$("verify").addEventListener("click", verify);
+$("backToEmail").addEventListener("click", () => {
+  showStep("email");
+  setStatus("");
+});
 $("clockIn").addEventListener("click", () => punch("clock-in"));
 $("clockOut").addEventListener("click", () => punch("clock-out"));
 $("disconnect").addEventListener("click", disconnect);
+$("code").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") verify();
+});
+$("email").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") sendCode();
+});
 $("shortcuts-link").addEventListener("click", (e) => {
   e.preventDefault();
   chrome.tabs.create({ url: "chrome://extensions/shortcuts" });

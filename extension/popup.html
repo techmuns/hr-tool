@@ -42,6 +42,7 @@
         color: var(--fg);
         font-size: 14px;
       }
+      input#code { letter-spacing: 4px; text-align: center; font-size: 18px; }
       button {
         width: 100%;
         padding: 9px 12px;
@@ -55,7 +56,9 @@
         margin-top: 10px;
       }
       button:hover { background: var(--indigo-dark); }
+      button:disabled { opacity: 0.6; cursor: default; }
       button.secondary { background: transparent; color: var(--indigo); border: 1px solid var(--border); }
+      button.link { background: none; color: var(--muted); border: 0; padding: 4px; font-weight: 400; font-size: 12px; text-decoration: underline; width: auto; }
       .row { display: flex; gap: 8px; }
       .row button { margin-top: 0; }
       .status { margin-top: 10px; font-size: 12px; min-height: 16px; }
@@ -63,6 +66,7 @@
       .status.err { color: var(--err); }
       .who { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
       .who strong { color: var(--fg); }
+      .sent-to { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
       .hint { font-size: 11px; color: var(--muted); margin-top: 12px; line-height: 1.5; }
       .hint kbd {
         font: inherit; background: var(--border); border-radius: 4px;
@@ -76,16 +80,23 @@
   <body>
     <h1>HR Tool Attendance</h1>
 
-    <!-- Setup view: shown until connected -->
-    <div id="setup">
-      <label for="baseUrl">HR tool URL</label>
-      <input id="baseUrl" type="url" placeholder="https://hr-tool.your-domain.workers.dev" />
+    <!-- Step 1: request a code -->
+    <div id="step-email">
       <label for="email">Your work email</label>
-      <input id="email" type="email" placeholder="you@company.com" />
-      <button id="connect">Connect</button>
+      <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
+      <button id="sendCode">Send verification code</button>
     </div>
 
-    <!-- Connected view -->
+    <!-- Step 2: enter the code -->
+    <div id="step-code" class="hidden">
+      <p class="sent-to">We emailed a 6-digit code to <strong id="code-email"></strong>.</p>
+      <label for="code">Verification code</label>
+      <input id="code" type="text" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" />
+      <button id="verify">Verify &amp; connect</button>
+      <button id="backToEmail" class="link">Use a different email</button>
+    </div>
+
+    <!-- Connected -->
     <div id="connected" class="hidden">
       <div class="who">Signed in as <strong id="who-name"></strong></div>
       <div class="row">

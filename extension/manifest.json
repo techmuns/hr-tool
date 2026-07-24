@@ -4,7 +4,7 @@
   "description": "Clock in and out of the HR tool with a keyboard shortcut — no need to open the site.",
   "version": "1.0.0",
   "permissions": ["storage", "notifications"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": ["https://hr-tool.tech-441.workers.dev/*"],
   "background": {
     "service_worker": "background.js"
   },
