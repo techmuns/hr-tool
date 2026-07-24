@@ -1,19 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Login } from "./components/Login";
 import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
 import { AdminDashboard } from "./admin/AdminDashboard";
-import { clearSession, getSession } from "./session";
-import { clearApiCache } from "./api";
+import { clearSession, getSession, setSession } from "./session";
+import { api, clearApiCache } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
+import type { SessionContext } from "./lib/sdk";
+import type { Employee, EmployeeRole } from "./types";
 
 /** True when the URL path is /clock — the quick-clock entry point. */
 function isClockRoute(): boolean {
   return window.location.pathname.replace(/\/+$/, "") === "/clock";
 }
 
-function HrApp() {
+function Centered({ children }: { children: ReactNode }) {
+  return <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>{children}</div>;
+}
+
+type HostStatus = "idle" | "resolving" | "done" | "error";
+
+function HrApp({ host }: { host: SessionContext }) {
   const [session, setSessionState] = useState(getSession());
+  // If the Munshot host already told us who the user is, resolve that identity
+  // before showing anything, so we never flash the previous local user.
+  const [hostStatus, setHostStatus] = useState<HostStatus>(() => (host.email ? "resolving" : "idle"));
+  const [hostError, setHostError] = useState<string | null>(null);
+  const resolvedEmail = useRef<string | null>(null);
 
   function refresh() {
     setSessionState(getSession());
@@ -25,11 +38,50 @@ function HrApp() {
     refresh();
   }
 
+  // Embedded: sign in as the Munshot-authenticated user, identified by the
+  // email the host provides. This overrides any stale local (OTP) session so
+  // the dashboard always shows the person Munshot logged in — not whoever last
+  // used this browser.
+  useEffect(() => {
+    const email = host.email;
+    if (!email) return;
+    if (resolvedEmail.current === email) return;
+    resolvedEmail.current = email;
+    setHostStatus("resolving");
+    setHostError(null);
+    api
+      .post<{ role: EmployeeRole; employee: Employee }>("/login", { text: email })
+      .then((data) => {
+        clearApiCache();
+        setSession({ role: data.role, employeeId: data.employee.id, tier: data.employee.tier });
+        setSessionState(getSession());
+        setHostStatus("done");
+      })
+      .catch((err) => {
+        clearSession();
+        setSessionState(null);
+        setHostError(
+          err instanceof Error && err.message
+            ? err.message
+            : `No HR account for ${email}`,
+        );
+        setHostStatus("error");
+      });
+  }, [host.email]);
+
+  // While the host identity is being resolved, don't render the previous user.
+  if (host.email && hostStatus === "resolving") {
+    return <Centered>Signing you in…</Centered>;
+  }
+  if (host.email && hostStatus === "error") {
+    return <Centered>Couldn’t sign you in: {hostError}</Centered>;
+  }
+
   if (!session) {
     return <Login onLoggedIn={refresh} />;
   }
 
-  // /clock: auto-uses the saved session and shows just the clock in/out card.
+  // /clock: shows just the clock in/out card.
   if (isClockRoute()) {
     return <ClockPage />;
   }
@@ -62,8 +114,8 @@ export default function App() {
   const embedded = window.self !== window.top;
 
   if (!session.token && embedded && !waited) {
-    return <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>Waiting for session…</div>;
+    return <Centered>Waiting for session…</Centered>;
   }
 
-  return <HrApp />;
+  return <HrApp host={session} />;
 }
