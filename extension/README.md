@@ -7,6 +7,23 @@ This is **additive**: it calls the same `/api/attendance/clock-in` and
 `/api/attendance/clock-out` endpoints the website uses, so employees can still
 clock in from the web UI as well. No backend changes are required.
 
+## Quick install (for teammates — no git needed)
+
+Share one file with your teammate and have them run it. It writes the extension
+to their machine, copies the path to their clipboard, and prints the three
+clicks to finish.
+
+- **Windows:** right-click `install-hr-attendance.ps1` → *Run with PowerShell*
+  (or run `powershell -ExecutionPolicy Bypass -File install-hr-attendance.ps1`).
+- **macOS / Linux:** run `bash install-hr-attendance.sh`.
+
+Then in Brave/Chrome: `brave://extensions` → **Developer mode** on →
+**Load unpacked** → paste the copied path → pick the folder. Click the pinned
+**HR Tool Attendance**, sign in with your work email + the emailed code.
+
+> The installers are generated from this folder by
+> `scripts/build-installers.py`; re-run it after changing any extension file.
+
 ## How it works
 
 The HR tool identifies users with `x-user-id` / `x-role` headers. The extension:
