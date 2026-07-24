@@ -1,6 +1,7 @@
 export type WorkMode = "wfh" | "in-office";
 export type EmployeeRole = "employee" | "admin";
 export type Tier = "employee" | "hr" | "founder";
+export type EmploymentType = "employee" | "freelancer";
 export type AttendanceStatus = "present" | "absent" | "leave";
 export type LeaveType = "paid" | "unpaid";
 export type LeaveStatus = "pending" | "approved" | "rejected";
@@ -15,6 +16,7 @@ export interface Employee {
   date_of_joining: string;
   role: EmployeeRole;
   tier: Tier;
+  employment_type: EmploymentType;
   monthly_salary: number;
   created_at: string;
   team_id: number | null;

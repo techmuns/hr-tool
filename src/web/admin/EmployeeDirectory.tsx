@@ -21,6 +21,7 @@ export function EmployeeDirectory() {
   const [search, setSearch] = useState("");
   const [teamFilter, setTeamFilter] = useState("");
   const [workModeFilter, setWorkModeFilter] = useState("");
+  const [employmentFilter, setEmploymentFilter] = useState("");
 
   function load() {
     Promise.all([api.get<EmployeeWithTeam[]>("/employees"), api.get<Team[]>("/admin/teams")])
@@ -38,13 +39,14 @@ export function EmployeeDirectory() {
     return employees.filter((e) => {
       if (teamFilter && String(e.team_id ?? "") !== teamFilter) return false;
       if (workModeFilter && e.work_mode !== workModeFilter) return false;
+      if (employmentFilter && e.employment_type !== employmentFilter) return false;
       if (q) {
         const haystack = `${e.name} ${e.email} ${e.job_title} ${e.team_name ?? ""}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [employees, search, teamFilter, workModeFilter]);
+  }, [employees, search, teamFilter, workModeFilter, employmentFilter]);
 
   return (
     <Card
@@ -79,11 +81,19 @@ export function EmployeeDirectory() {
           </select>
         </div>
         <div className="field">
-          <label>Employee type</label>
+          <label>Work mode</label>
           <select value={workModeFilter} onChange={(e) => setWorkModeFilter(e.target.value)}>
-            <option value="">All types</option>
+            <option value="">All modes</option>
             <option value="in-office">In-office</option>
             <option value="wfh">WFH / Online</option>
+          </select>
+        </div>
+        <div className="field">
+          <label>Employment</label>
+          <select value={employmentFilter} onChange={(e) => setEmploymentFilter(e.target.value)}>
+            <option value="">All</option>
+            <option value="employee">Employees</option>
+            <option value="freelancer">Freelancers</option>
           </select>
         </div>
       </div>
@@ -107,6 +117,11 @@ export function EmployeeDirectory() {
                 <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
                   {emp.name}
                 </button>
+                {emp.employment_type === "freelancer" && (
+                  <span style={{ marginLeft: 6 }}>
+                    <Tag value="freelancer" />
+                  </span>
+                )}
               </td>
               <td>{emp.team_name || <span className="muted">—</span>}</td>
               <td>{emp.email || <span className="muted">—</span>}</td>

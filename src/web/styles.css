@@ -857,6 +857,13 @@ thead .hm-name {
   color: var(--primary);
   text-decoration: underline;
 }
+.hm-name-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* Employee detail drawer */
 .drawer-backdrop {

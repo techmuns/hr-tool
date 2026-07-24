@@ -7,13 +7,24 @@ import { formatINR } from "../money";
 import { getSession } from "../session";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
-import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Role, Team, WorkMode } from "../types";
+import type {
+  Employee,
+  EmployeeDetail,
+  EmploymentType,
+  LeaveRequest,
+  Payroll,
+  Reimbursement,
+  Role,
+  Team,
+  WorkMode,
+} from "../types";
 
 interface FormState {
   name: string;
   email: string;
   location: string;
   work_mode: WorkMode;
+  employment_type: EmploymentType;
   date_of_joining: string;
   salaryRupees: string;
   team_id: number | null;
@@ -25,6 +36,7 @@ const EMPTY_FORM: FormState = {
   email: "",
   location: "",
   work_mode: "in-office",
+  employment_type: "employee",
   date_of_joining: "",
   salaryRupees: "",
   team_id: null,
@@ -37,6 +49,7 @@ function toForm(e: Employee): FormState {
     email: e.email,
     location: e.location,
     work_mode: e.work_mode,
+    employment_type: e.employment_type,
     date_of_joining: e.date_of_joining,
     salaryRupees: (e.monthly_salary / 100).toFixed(2),
     team_id: e.team_id,
@@ -123,6 +136,7 @@ export function EmployeePanel({
       email: form.email.trim(),
       location: form.location.trim(),
       work_mode: form.work_mode,
+      employment_type: form.employment_type,
       date_of_joining: form.date_of_joining,
       monthly_salary: Math.round((parseFloat(form.salaryRupees) || 0) * 100),
       team_id: form.team_id,
@@ -259,21 +273,34 @@ export function EmployeePanel({
               </div>
               <div className="row">
                 <div className="field">
-                  <label>Employee type</label>
+                  <label>Work mode</label>
                   <select value={form.work_mode} onChange={(e) => set("work_mode", e.target.value as WorkMode)}>
                     <option value="in-office">In-office</option>
                     <option value="wfh">WFH / Online</option>
                   </select>
                 </div>
                 <div className="field">
-                  <label>Date of joining</label>
-                  <input
-                    type="date"
-                    value={form.date_of_joining}
-                    onChange={(e) => set("date_of_joining", e.target.value)}
-                  />
-                  {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
+                  <label>Employment type</label>
+                  <select
+                    value={form.employment_type}
+                    onChange={(e) => set("employment_type", e.target.value as EmploymentType)}
+                  >
+                    <option value="employee">Employee</option>
+                    <option value="freelancer">Freelancer</option>
+                  </select>
+                  {form.employment_type === "freelancer" && (
+                    <p className="field-hint">Freelancers are excluded from attendance.</p>
+                  )}
                 </div>
+              </div>
+              <div className="field">
+                <label>Date of joining</label>
+                <input
+                  type="date"
+                  value={form.date_of_joining}
+                  onChange={(e) => set("date_of_joining", e.target.value)}
+                />
+                {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
               </div>
               <div className="row">
                 <div className="field">

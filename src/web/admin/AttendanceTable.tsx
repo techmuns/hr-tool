@@ -2,10 +2,32 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths, todayISODate } from "../date";
+import {
+  currentMonth,
+  dayKey,
+  daysForMonth,
+  formatTime,
+  isToday,
+  recentMonths,
+  todayISODate,
+  WORKING_DAYS_PER_MONTH,
+} from "../date";
 import { scrollToToday } from "../scrollToToday";
-import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
+import type { AttendanceStatus, AttendanceWithName, Employee, EmployeeWithTeam } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
+
+type SortKey = "name" | "team" | "work_mode";
+
+const SORT_LABEL: Record<SortKey, string> = {
+  name: "Name",
+  team: "Team",
+  work_mode: "Work mode",
+};
+
+const WORK_MODE_LABEL: Record<string, string> = {
+  "in-office": "In-office",
+  wfh: "WFH / Online",
+};
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
@@ -31,8 +53,9 @@ interface Editing {
 
 export function AttendanceTable() {
   const [month, setMonth] = useState(currentMonth());
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<EmployeeWithTeam[]>([]);
   const [attendance, setAttendance] = useState<AttendanceWithName[]>([]);
+  const [sortBy, setSortBy] = useState<SortKey>("name");
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [saving, setSaving] = useState(false);
@@ -44,11 +67,12 @@ export function AttendanceTable() {
 
   const load = useCallback(() => {
     return Promise.all([
-      api.get<Employee[]>("/employees"),
+      api.get<EmployeeWithTeam[]>("/employees"),
       api.get<AttendanceWithName[]>(`/admin/attendance?month=${month}`),
     ])
       .then(([emps, att]) => {
-        setEmployees(emps.filter((e) => e.role === "employee"));
+        // Everyone tracked for attendance: employees + HR/founders, but not freelancers.
+        setEmployees(emps.filter((e) => e.employment_type !== "freelancer"));
         setAttendance(att);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
@@ -71,6 +95,30 @@ export function AttendanceTable() {
     }
     return map;
   }, [attendance]);
+
+  // employee_id -> count of present days this month
+  const presentCount = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const row of attendance) {
+      if (row.status === "present") map.set(row.employee_id, (map.get(row.employee_id) ?? 0) + 1);
+    }
+    return map;
+  }, [attendance]);
+
+  const sortedEmployees = useMemo(() => {
+    const list = [...employees];
+    list.sort((a, b) => {
+      if (sortBy === "team") {
+        const cmp = (a.team_name ?? "~").localeCompare(b.team_name ?? "~");
+        if (cmp !== 0) return cmp;
+      } else if (sortBy === "work_mode") {
+        const cmp = a.work_mode.localeCompare(b.work_mode);
+        if (cmp !== 0) return cmp;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    return list;
+  }, [employees, sortBy]);
 
   // keep today's column in view whenever the grid changes
   useEffect(() => {
@@ -113,6 +161,13 @@ export function AttendanceTable() {
       title="Attendance"
       actions={
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)} style={{ width: "auto" }} title="Sort by">
+            {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => (
+              <option key={k} value={k}>
+                Sort: {SORT_LABEL[k]}
+              </option>
+            ))}
+          </select>
           <select value={month} onChange={(e) => setMonth(e.target.value)} style={{ width: "auto" }}>
             {months.map((m) => (
               <option key={m.value} value={m.value}>
@@ -129,6 +184,7 @@ export function AttendanceTable() {
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Click a name to view or edit that employee. Click any cell to mark them present, not clocked in, or on leave.
+        The count under each name is present days out of {WORKING_DAYS_PER_MONTH} working days/month.
       </p>
 
       <div className="heatmap-scroll" ref={scrollRef}>
@@ -144,14 +200,23 @@ export function AttendanceTable() {
             </tr>
           </thead>
           <tbody>
-            {employees.map((emp) => {
+            {sortedEmployees.map((emp) => {
               const dayMap = byEmployee.get(emp.id);
+              const present = presentCount.get(emp.id) ?? 0;
+              const groupCtx =
+                sortBy === "team"
+                  ? emp.team_name ?? "No team"
+                  : sortBy === "work_mode"
+                    ? WORK_MODE_LABEL[emp.work_mode] ?? emp.work_mode
+                    : null;
+              const subtitle = `${present} / ${WORKING_DAYS_PER_MONTH}${groupCtx ? ` · ${groupCtx}` : ""}`;
               return (
                 <tr key={emp.id} className="hm-row-band">
                   <td className="hm-name">
                     <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
                       {emp.name}
                     </button>
+                    <span className="hm-name-sub">{subtitle}</span>
                   </td>
                   {days.map((day) => {
                     const cell = dayMap?.get(dayKey(month, day)) ?? null;

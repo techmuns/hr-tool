@@ -31,6 +31,9 @@ export interface MonthOption {
 export const EARLIEST_VISIBLE_DATE = "2026-07-19";
 const EARLIEST_VISIBLE_MONTH = EARLIEST_VISIBLE_DATE.slice(0, 7); // "2026-07"
 
+/** Company standard: fixed number of working days per month (used in summaries). */
+export const WORKING_DAYS_PER_MONTH = 24;
+
 /** Recent months, newest first, for the attendance month picker. */
 export function recentMonths(count = 12): MonthOption[] {
   const now = new Date();
