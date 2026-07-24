@@ -4,6 +4,7 @@ import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { clearSession, getSession } from "./session";
+import { clearApiCache } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
 
 /** True when the URL path is /clock — the quick-clock entry point. */
@@ -19,6 +20,7 @@ function HrApp() {
   }
 
   function logout() {
+    clearApiCache();
     clearSession();
     refresh();
   }
