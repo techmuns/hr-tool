@@ -5,6 +5,7 @@ import { Button } from "../components/ui/Button";
 
 export function FeedbackForm() {
   const [message, setMessage] = useState("");
+  const [anonymous, setAnonymous] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,7 +17,7 @@ export function FeedbackForm() {
     setSent(false);
     setError(null);
     try {
-      await api.post("/feedback", { message });
+      await api.post("/feedback", { message, anonymous });
       setMessage("");
       setSent(true);
     } catch (err) {
@@ -28,7 +29,7 @@ export function FeedbackForm() {
 
   return (
     <Card title="Feedback">
-      <p className="muted">Share feedback with HR — it goes straight to their feedback list.</p>
+      <p className="muted">Share feedback — it goes straight to the founders' feedback list.</p>
       <form onSubmit={submit}>
         <div className="field">
           <textarea
@@ -38,10 +39,21 @@ export function FeedbackForm() {
             onChange={(e) => setMessage(e.target.value)}
           />
         </div>
+        <label className="switch-row">
+          <span className="switch">
+            <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} />
+            <span className="switch-slider" />
+          </span>
+          <span>Send anonymously{anonymous ? " — your name won't be shown" : ""}</span>
+        </label>
         <Button type="submit" variant="primary" disabled={submitting || !message.trim()}>
           {submitting ? "Sending…" : "Send Feedback"}
         </Button>
-        {sent && <span className="muted" style={{ marginLeft: 10 }}>Sent, thank you.</span>}
+        {sent && (
+          <span className="muted" style={{ marginLeft: 10 }}>
+            Sent{anonymous ? " anonymously" : ""}, thank you.
+          </span>
+        )}
         {error && <p className="error-text">{error}</p>}
       </form>
     </Card>

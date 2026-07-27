@@ -88,11 +88,12 @@ export interface Feedback {
   id: number;
   employee_id: number;
   message: string;
+  anonymous: number; // 0 | 1
   created_at: string;
 }
 
 export interface FeedbackWithName extends Feedback {
-  employee_name: string;
+  employee_name: string | null; // null when sent anonymously
 }
 
 export interface ChatMessage {
