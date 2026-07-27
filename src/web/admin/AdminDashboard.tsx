@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Nav } from "../components/Nav";
-import { Button } from "../components/ui/Button";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
@@ -11,7 +10,7 @@ import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
 import { getSession } from "../session";
 
-export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+export function AdminDashboard() {
   const tier = getSession()?.tier;
   const isHR = tier === "hr";
   const isFounder = tier === "founder";
@@ -37,7 +36,6 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         <div className="topbar-actions">
           <span className="who">{tier === "founder" ? "Founder view" : "HR view"}</span>
           <ThemeToggle />
-          <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>
       <div className="layout">

@@ -32,12 +32,6 @@ function HrApp({ host }: { host: SessionContext }) {
     setSessionState(getSession());
   }
 
-  function logout() {
-    clearApiCache();
-    clearSession();
-    refresh();
-  }
-
   // Embedded: sign in as the Munshot-authenticated user, identified by the
   // email the host provides. This overrides any stale local (OTP) session so
   // the dashboard always shows the person Munshot logged in — not whoever last
@@ -83,14 +77,14 @@ function HrApp({ host }: { host: SessionContext }) {
 
   // /clock: shows just the clock in/out card.
   if (isClockRoute()) {
-    return <ClockPage onLogout={logout} />;
+    return <ClockPage />;
   }
 
   if (session.role === "admin") {
-    return <AdminDashboard onLogout={logout} />;
+    return <AdminDashboard />;
   }
 
-  return <EmployeeDashboard onLogout={logout} />;
+  return <EmployeeDashboard />;
 }
 
 export default function App() {
