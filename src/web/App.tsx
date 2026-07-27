@@ -83,14 +83,14 @@ function HrApp({ host }: { host: SessionContext }) {
 
   // /clock: shows just the clock in/out card.
   if (isClockRoute()) {
-    return <ClockPage />;
+    return <ClockPage onLogout={logout} />;
   }
 
   if (session.role === "admin") {
     return <AdminDashboard onLogout={logout} />;
   }
 
-  return <EmployeeDashboard />;
+  return <EmployeeDashboard onLogout={logout} />;
 }
 
 export default function App() {

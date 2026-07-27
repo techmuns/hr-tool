@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Nav } from "../components/Nav";
+import { Button } from "../components/ui/Button";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ClockCard } from "./ClockCard";
 import { WorkingDays } from "./WorkingDays";
@@ -17,7 +18,7 @@ const VIEWS = [
   { key: "chat", label: "Chat with HR" },
 ];
 
-export function EmployeeDashboard() {
+export function EmployeeDashboard({ onLogout }: { onLogout: () => void }) {
   const [view, setView] = useState("home");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
   const [employee, setEmployee] = useState<EmployeeWithTeam | null>(null);
@@ -46,6 +47,7 @@ export function EmployeeDashboard() {
             </span>
           )}
           <ThemeToggle />
+          <Button onClick={onLogout}>Log out</Button>
         </div>
       </div>
       <div className="layout">
