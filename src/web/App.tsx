@@ -21,6 +21,7 @@ function Centered({ children }: { children: ReactNode }) {
 type HostStatus = "idle" | "resolving" | "done" | "error";
 
 function HrApp({ host }: { host: SessionContext }) {
+  const hasToken = !!host.token;
   const [session, setSessionState] = useState(getSession());
   // If the Munshot host already told us who the user is, resolve that identity
   // before showing anything, so we never flash the previous local user.
@@ -72,6 +73,12 @@ function HrApp({ host }: { host: SessionContext }) {
   }
 
   if (!session) {
+    // The OTP login is ONLY for the no-token (standalone) case. When the host
+    // passed a token, identity comes from the host — never fall back to OTP;
+    // keep waiting for the host identity to resolve instead.
+    if (hasToken) {
+      return <Centered>Signing you in…</Centered>;
+    }
     return <Login onLoggedIn={refresh} />;
   }
 
@@ -93,7 +100,10 @@ export default function App() {
 
   useEffect(() => {
     if (!session.token) return;
-    console.info("[dashboard] token:", session.token);
+    console.info("[dashboard] token:", session.token, {
+      email: session.email,
+      userName: session.userName,
+    });
   }, [session.token]);
 
   // When embedded in the Munshot host, host:init delivers a session token
