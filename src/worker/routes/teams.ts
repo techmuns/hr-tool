@@ -27,6 +27,25 @@ app.post("/admin/teams", async (c) => {
   return c.json(created, 201);
 });
 
+app.patch("/admin/teams/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  const existing = await c.env.DB.prepare("SELECT id FROM teams WHERE id = ?").bind(id).first();
+  if (!existing) return c.json({ error: "Team not found" }, 404);
+
+  const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string });
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (!name) return c.json({ error: "Team name is required" }, 400);
+
+  const dupe = await c.env.DB.prepare("SELECT id FROM teams WHERE name = ? AND id != ?").bind(name, id).first();
+  if (dupe) return c.json({ error: "A team with that name already exists" }, 400);
+
+  // Employees reference teams by team_id, so renaming the row is all that's
+  // needed for everyone on this team to pick up the new name.
+  await c.env.DB.prepare("UPDATE teams SET name = ? WHERE id = ?").bind(name, id).run();
+  const updated = await c.env.DB.prepare("SELECT * FROM teams WHERE id = ?").bind(id).first<Team>();
+  return c.json(updated);
+});
+
 app.delete("/admin/teams/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const existing = await c.env.DB.prepare("SELECT id FROM teams WHERE id = ?").bind(id).first();

@@ -17,6 +17,40 @@ export function RoleManager({
   const [busy, setBusy] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function startEdit(r: Role) {
+    setError(null);
+    setEditingId(r.id);
+    setEditName(r.name);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+  }
+
+  async function saveEdit(r: Role) {
+    const trimmed = editName.trim();
+    if (!trimmed) return;
+    if (trimmed === r.name) {
+      cancelEdit();
+      return;
+    }
+    setSavingEdit(true);
+    setError(null);
+    try {
+      await api.patch(`/admin/roles/${r.id}`, { name: trimmed });
+      cancelEdit();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rename role");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function addRole(e: React.FormEvent) {
     e.preventDefault();
@@ -68,20 +102,68 @@ export function RoleManager({
             <p className="muted">No roles yet.</p>
           ) : (
             <ul className="team-list">
-              {roles.map((r) => (
-                <li key={r.id}>
-                  <span>{r.name}</span>
-                  <button
-                    type="button"
-                    className="row-remove-btn"
-                    title="Delete role"
-                    disabled={removingId === r.id}
-                    onClick={() => removeRole(r.id)}
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
+              {roles.map((r) =>
+                editingId === r.id ? (
+                  <li key={r.id} className="editing">
+                    <input
+                      autoFocus
+                      type="text"
+                      className="edit-name-input"
+                      value={editName}
+                      disabled={savingEdit}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(r);
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                    />
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit-btn"
+                        title="Save"
+                        disabled={savingEdit || !editName.trim()}
+                        onClick={() => saveEdit(r)}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-remove-btn"
+                        title="Cancel"
+                        disabled={savingEdit}
+                        onClick={cancelEdit}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ) : (
+                  <li key={r.id}>
+                    <span>{r.name}</span>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit-btn"
+                        title="Rename role"
+                        disabled={removingId === r.id}
+                        onClick={() => startEdit(r)}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="row-remove-btn"
+                        title="Delete role"
+                        disabled={removingId === r.id}
+                        onClick={() => removeRole(r.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ),
+              )}
             </ul>
           )}
           <form className="composer" onSubmit={addRole} style={{ marginTop: 14 }}>

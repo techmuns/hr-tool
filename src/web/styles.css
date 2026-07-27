@@ -1067,6 +1067,41 @@ thead .hm-name {
   cursor: not-allowed;
 }
 
+.row-edit-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  line-height: 1;
+}
+.row-edit-btn:hover:not(:disabled) {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+.row-edit-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.team-list li.editing {
+  gap: 6px;
+}
+.team-list .edit-name-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  padding: 4px 6px;
+}
+.team-list .row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
 /* Generic centered modal (team manager, etc.) */
 .modal-backdrop {
   position: fixed;

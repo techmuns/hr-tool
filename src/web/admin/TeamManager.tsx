@@ -17,6 +17,40 @@ export function TeamManager({
   const [busy, setBusy] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editName, setEditName] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  function startEdit(t: Team) {
+    setError(null);
+    setEditingId(t.id);
+    setEditName(t.name);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+  }
+
+  async function saveEdit(t: Team) {
+    const trimmed = editName.trim();
+    if (!trimmed) return;
+    if (trimmed === t.name) {
+      cancelEdit();
+      return;
+    }
+    setSavingEdit(true);
+    setError(null);
+    try {
+      await api.patch(`/admin/teams/${t.id}`, { name: trimmed });
+      cancelEdit();
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to rename team");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
 
   async function addTeam(e: React.FormEvent) {
     e.preventDefault();
@@ -68,20 +102,68 @@ export function TeamManager({
             <p className="muted">No teams yet.</p>
           ) : (
             <ul className="team-list">
-              {teams.map((t) => (
-                <li key={t.id}>
-                  <span>{t.name}</span>
-                  <button
-                    type="button"
-                    className="row-remove-btn"
-                    title="Delete team"
-                    disabled={removingId === t.id}
-                    onClick={() => removeTeam(t.id)}
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
+              {teams.map((t) =>
+                editingId === t.id ? (
+                  <li key={t.id} className="editing">
+                    <input
+                      autoFocus
+                      type="text"
+                      className="edit-name-input"
+                      value={editName}
+                      disabled={savingEdit}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") saveEdit(t);
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                    />
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit-btn"
+                        title="Save"
+                        disabled={savingEdit || !editName.trim()}
+                        onClick={() => saveEdit(t)}
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        className="row-remove-btn"
+                        title="Cancel"
+                        disabled={savingEdit}
+                        onClick={cancelEdit}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ) : (
+                  <li key={t.id}>
+                    <span>{t.name}</span>
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-edit-btn"
+                        title="Rename team"
+                        disabled={removingId === t.id}
+                        onClick={() => startEdit(t)}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        type="button"
+                        className="row-remove-btn"
+                        title="Delete team"
+                        disabled={removingId === t.id}
+                        onClick={() => removeTeam(t.id)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </li>
+                ),
+              )}
             </ul>
           )}
           <form className="composer" onSubmit={addTeam} style={{ marginTop: 14 }}>
