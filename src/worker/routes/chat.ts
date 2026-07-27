@@ -24,20 +24,27 @@ app.get("/admin/chat", requireAdmin, async (c) => {
   return c.json(rows.results);
 });
 
+const MAX_CHAT_BODY = 5000;
+
 app.post("/chat", async (c) => {
   const employee = c.get("employee");
-  const role = c.req.header("x-role");
   const body = await c
     .req.json<{ body?: string; employee_id?: number }>()
     .catch(() => ({}) as { body?: string; employee_id?: number });
-  if (!body.body || !body.body.trim()) {
+  const text = typeof body.body === "string" ? body.body.trim() : "";
+  if (!text) {
     return c.json({ error: "body is required" }, 400);
+  }
+  if (text.length > MAX_CHAT_BODY) {
+    return c.json({ error: `body must be at most ${MAX_CHAT_BODY} characters` }, 400);
   }
 
   let threadEmployeeId = employee.id;
   let senderRole: "employee" | "admin" = "employee";
 
-  if (role === "admin" && employee.role === "admin") {
+  // Only a verified admin (role loaded from the DB) may post into another
+  // employee's thread as an admin reply.
+  if (employee.role === "admin") {
     if (!body.employee_id) return c.json({ error: "employee_id is required for admin replies" }, 400);
     threadEmployeeId = body.employee_id;
     senderRole = "admin";
@@ -46,7 +53,7 @@ app.post("/chat", async (c) => {
   const result = await c.env.DB.prepare(
     "INSERT INTO chat_messages (employee_id, sender_role, body) VALUES (?, ?, ?)"
   )
-    .bind(threadEmployeeId, senderRole, body.body.trim())
+    .bind(threadEmployeeId, senderRole, text)
     .run();
 
   const row = await c.env.DB.prepare("SELECT * FROM chat_messages WHERE id = ?")

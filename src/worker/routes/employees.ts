@@ -7,6 +7,14 @@ const app = new Hono<AppEnv>();
 
 app.use("*", requireEmployee);
 
+const MAX_NOTE = 1000;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isUniqueViolation(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /UNIQUE constraint failed/i.test(msg);
+}
+
 app.get("/me", async (c) => {
   const employee = c.get("employee");
   const withTeam = await c.env.DB.prepare(
@@ -39,6 +47,9 @@ app.post("/reimbursements", async (c) => {
     return c.json({ error: "amount must be a positive number" }, 400);
   }
   const note = typeof body.note === "string" ? body.note.trim() : "";
+  if (note.length > MAX_NOTE) {
+    return c.json({ error: `note must be at most ${MAX_NOTE} characters` }, 400);
+  }
 
   const result = await c.env.DB.prepare(
     "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
@@ -102,6 +113,9 @@ app.post("/admin/employees/:id/reimbursements", requireAdmin, async (c) => {
     return c.json({ error: "amount must be a positive number" }, 400);
   }
   const note = typeof body.note === "string" ? body.note.trim() : "";
+  if (note.length > MAX_NOTE) {
+    return c.json({ error: `note must be at most ${MAX_NOTE} characters` }, 400);
+  }
 
   const result = await c.env.DB.prepare(
     "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
@@ -152,6 +166,7 @@ app.post("/employees", requireAdmin, async (c) => {
   if (!name) return c.json({ error: "Name is required" }, 400);
 
   const email = typeof body.email === "string" ? body.email.trim() : "";
+  if (email && !EMAIL_RE.test(email)) return c.json({ error: "Invalid email address" }, 400);
   const location = typeof body.location === "string" ? body.location.trim() : "";
   const work_mode = normalizeWorkMode(body.work_mode, "in-office");
   const date_of_joining =
@@ -163,12 +178,18 @@ app.post("/employees", requireAdmin, async (c) => {
   const team_id = normalizeTeamId(body.team_id, null);
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : "";
 
-  const result = await c.env.DB.prepare(
-    `INSERT INTO employees (name, email, location, work_mode, date_of_joining, role, monthly_salary, team_id, job_title)
-     VALUES (?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
-  )
-    .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title)
-    .run();
+  let result;
+  try {
+    result = await c.env.DB.prepare(
+      `INSERT INTO employees (name, email, location, work_mode, date_of_joining, role, monthly_salary, team_id, job_title)
+       VALUES (?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
+    )
+      .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title)
+      .run();
+  } catch (err) {
+    if (isUniqueViolation(err)) return c.json({ error: "An employee with that email already exists" }, 409);
+    throw err;
+  }
 
   const created = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
     .bind(result.meta.last_row_id)
@@ -185,6 +206,7 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
 
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : existing.name;
   const email = typeof body.email === "string" ? body.email.trim() : existing.email;
+  if (email && !EMAIL_RE.test(email)) return c.json({ error: "Invalid email address" }, 400);
   const location = typeof body.location === "string" ? body.location.trim() : existing.location;
   const work_mode = normalizeWorkMode(body.work_mode, existing.work_mode);
   const date_of_joining =
@@ -196,12 +218,17 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
   const team_id = normalizeTeamId(body.team_id, existing.team_id);
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : existing.job_title;
 
-  await c.env.DB.prepare(
-    `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, date_of_joining = ?,
-     monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
-  )
-    .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title, id)
-    .run();
+  try {
+    await c.env.DB.prepare(
+      `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, date_of_joining = ?,
+       monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
+    )
+      .bind(name, email, location, work_mode, date_of_joining, monthly_salary, team_id, job_title, id)
+      .run();
+  } catch (err) {
+    if (isUniqueViolation(err)) return c.json({ error: "An employee with that email already exists" }, 409);
+    throw err;
+  }
 
   const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
   return c.json(updated);

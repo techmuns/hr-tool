@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HR Tool</title>
-    <script src="https://munshot.s3.ap-south-1.amazonaws.com/SDK+script/munshot-dashboard-sdk.v1.0.0.min.js"></script>
+    <!-- Munshot Dashboard SDK, self-hosted (vendored from the official S3 build)
+         so it loads same-origin under our CSP with no third-party dependency.
+         integrity pins the exact bytes; re-vendor + update this hash to upgrade. -->
+    <script
+      src="/vendor/munshot-dashboard-sdk.v1.0.0.min.js"
+      integrity="sha384-B9UJGu0yCId+ujPaw9Z0iebfgz38qd3X49MenMfn+DYi+IlqRlXfC0yCydVo4gR9"
+    ></script>
   </head>
   <body>
     <div id="root"></div>

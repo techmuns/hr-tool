@@ -1,12 +1,11 @@
-import { getSession } from "./session";
+import { getBearer } from "./authToken";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const session = getSession();
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-  if (session) {
-    headers.set("x-user-id", String(session.employeeId));
-    headers.set("x-role", session.role);
+  const bearer = getBearer();
+  if (bearer) {
+    headers.set("Authorization", `Bearer ${bearer}`);
   }
 
   const res = await fetch(`/api${path}`, { ...options, headers });

@@ -136,14 +136,33 @@ function createNoopSdk(): DashboardClientSdk {
   };
 }
 
+// Trusted Munshot host origin(s), comma-separated, supplied at build time via
+// VITE_MUNSHOT_ORIGINS. When set, the SDK channel is pinned to these origins so
+// host context (including the session JWT) is only accepted from — and messages
+// only posted to — the real host, instead of the SDK default of "*".
+function trustedOrigins(): string[] {
+  const raw = (import.meta as { env?: Record<string, string | undefined> }).env?.VITE_MUNSHOT_ORIGINS;
+  return (raw ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 function initSdk(): DashboardClientSdk {
   const g = window.MunshotDashboardSDK;
   const config: CreateClientConfig = {
     dashboardId: DASHBOARD_ID,
     dashboardName: DASHBOARD_NAME,
+    lockOriginOnFirstMessage: true,
     // Leave autoReady default (true). The SDK sends dashboard:ready itself
     // from inside its host:init handler, once it knows the channelId.
   };
+
+  const origins = trustedOrigins();
+  if (origins.length > 0) {
+    config.allowedOrigins = origins;
+    if (origins.length === 1) config.targetOrigin = origins[0];
+  }
 
   const factory = g?.createDashboardClientSdk ?? g?.createClient;
   if (typeof factory === "function") {

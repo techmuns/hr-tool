@@ -1,44 +1,62 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Login } from "./components/Login";
 import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { AdminDashboard } from "./admin/AdminDashboard";
-import { clearSession, getSession } from "./session";
+import { clearSession, setSession } from "./session";
 import { useHostContext } from "./hooks/useHostContext";
+import { api } from "./api";
+import { clearAppToken, getBearer, setHostToken } from "./authToken";
+import type { EmployeeWithTeam } from "./types";
 
-function HrApp() {
-  const [session, setSessionState] = useState(getSession());
+export default function App() {
+  const { session } = useHostContext();
+  // undefined = still resolving; null = not signed in; object = signed in.
+  const [me, setMe] = useState<EmployeeWithTeam | null | undefined>(undefined);
 
-  function refresh() {
-    setSessionState(getSession());
-  }
+  // Mirror the Munshot host JWT into the in-memory bearer source.
+  useEffect(() => {
+    setHostToken(session.token);
+  }, [session.token]);
+
+  const loadMe = useCallback(async () => {
+    if (!getBearer()) {
+      setMe(null);
+      return;
+    }
+    try {
+      const emp = await api.get<EmployeeWithTeam>("/me");
+      // Cache role/tier for UI gating only — the server is the source of truth.
+      setSession({ role: emp.role, employeeId: emp.id, tier: emp.tier });
+      setMe(emp);
+    } catch {
+      clearSession();
+      setMe(null);
+    }
+  }, []);
+
+  // Resolve identity whenever a credential becomes available (host token may
+  // arrive after mount via postMessage).
+  useEffect(() => {
+    loadMe();
+  }, [session.token, loadMe]);
 
   function logout() {
     clearSession();
-    refresh();
+    clearAppToken();
+    setMe(null);
   }
 
-  if (!session) {
-    return <Login onLoggedIn={refresh} />;
+  if (me === undefined) {
+    return <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>Signing in…</div>;
   }
 
-  if (session.role === "admin") {
+  if (!me) {
+    return <Login onLoggedIn={loadMe} />;
+  }
+
+  if (me.role === "admin") {
     return <AdminDashboard onLogout={logout} />;
   }
 
   return <EmployeeDashboard />;
-}
-
-export default function App() {
-  const { session } = useHostContext();
-
-  useEffect(() => {
-    if (!session.token) return;
-    console.info("[dashboard] token:", session.token);
-  }, [session.token]);
-
-  if (!session.token) {
-    return <div style={{ padding: 16, color: "#9ca3af", fontSize: 13 }}>Waiting for session…</div>;
-  }
-
-  return <HrApp />;
 }

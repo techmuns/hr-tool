@@ -8,6 +8,18 @@ const app = new Hono<AppEnv>();
 
 app.use("*", requireEmployee);
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTH = /^\d{4}-\d{2}$/;
+
+/** Accept only a YYYY-MM month filter; anything else drops the filter. */
+function monthFilter(raw: string | undefined): string | null {
+  return raw && MONTH.test(raw) ? `${raw}%` : null;
+}
+
+function isValidTimestamp(value: unknown): boolean {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
 app.post("/attendance/clock-in", async (c) => {
   const employee = c.get("employee");
   const workDate = todayISODate();
@@ -53,12 +65,12 @@ app.post("/attendance/clock-out", async (c) => {
 
 app.get("/attendance/me", async (c) => {
   const employee = c.get("employee");
-  const month = c.req.query("month");
+  const month = monthFilter(c.req.query("month"));
   let query = "SELECT * FROM attendance WHERE employee_id = ?";
   const params: (string | number)[] = [employee.id];
   if (month) {
     query += " AND work_date LIKE ?";
-    params.push(`${month}%`);
+    params.push(month);
   }
   query += " ORDER BY work_date DESC";
   const rows = await c.env.DB.prepare(query).bind(...params).all<Attendance>();
@@ -66,13 +78,13 @@ app.get("/attendance/me", async (c) => {
 });
 
 app.get("/admin/attendance", requireAdmin, async (c) => {
-  const month = c.req.query("month");
+  const month = monthFilter(c.req.query("month"));
   let query = `SELECT a.*, e.name AS employee_name FROM attendance a
                JOIN employees e ON e.id = a.employee_id`;
   const params: (string | number)[] = [];
   if (month) {
     query += " WHERE a.work_date LIKE ?";
-    params.push(`${month}%`);
+    params.push(month);
   }
   query += " ORDER BY a.work_date DESC, e.name ASC";
   const rows = await c.env.DB.prepare(query).bind(...params).all<AttendanceWithName>();
@@ -95,7 +107,18 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
   if (!body.employee_id || !body.work_date) {
     return c.json({ error: "employee_id and work_date are required" }, 400);
   }
-  const status: AttendanceStatus = body.status ?? "present";
+  if (!ISO_DATE.test(body.work_date)) {
+    return c.json({ error: "work_date must be YYYY-MM-DD" }, 400);
+  }
+  if (body.clock_in != null && !isValidTimestamp(body.clock_in)) {
+    return c.json({ error: "clock_in must be a valid timestamp" }, 400);
+  }
+  if (body.clock_out != null && !isValidTimestamp(body.clock_out)) {
+    return c.json({ error: "clock_out must be a valid timestamp" }, 400);
+  }
+  const allowedStatus: AttendanceStatus[] = ["present", "absent", "leave"];
+  const status: AttendanceStatus =
+    body.status && allowedStatus.includes(body.status) ? body.status : "present";
 
   await c.env.DB.prepare(
     `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status)

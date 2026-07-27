@@ -13,6 +13,7 @@ const WORKING_DAYS_PER_MONTH = 22;
 app.get("/admin/payroll", async (c) => {
   const period = c.req.query("period");
   if (!period) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+  if (!/^\d{4}-\d{2}$/.test(period)) return c.json({ error: "period must be YYYY-MM" }, 400);
 
   if (c.req.query("generate") === "1") {
     const employees = await c.env.DB.prepare("SELECT * FROM employees").all<Employee>();
