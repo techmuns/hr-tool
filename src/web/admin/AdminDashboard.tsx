@@ -11,19 +11,24 @@ import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
 import { getSession } from "../session";
 
-const VIEWS = [
-  { key: "home", label: "My attendance" },
-  { key: "attendance", label: "Attendance" },
-  { key: "employees", label: "Employees" },
-  { key: "payroll", label: "Payroll" },
-  { key: "feedback", label: "Feedback" },
-  { key: "chat", label: "Chat" },
-];
-
 export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
-  const [view, setView] = useState("home");
-  const [attendanceRefresh, setAttendanceRefresh] = useState(0);
   const tier = getSession()?.tier;
+  const isHR = tier === "hr";
+  const isFounder = tier === "founder";
+
+  // HR clocks in (and only HR); founders don't. Founders see feedback (and only
+  // founders); HR doesn't.
+  const views = [
+    ...(isHR ? [{ key: "home", label: "My attendance" }] : []),
+    { key: "attendance", label: "Attendance" },
+    { key: "employees", label: "Employees" },
+    { key: "payroll", label: "Payroll" },
+    ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
+    { key: "chat", label: "Chat" },
+  ];
+
+  const [view, setView] = useState(isHR ? "home" : "attendance");
+  const [attendanceRefresh, setAttendanceRefresh] = useState(0);
 
   return (
     <div className="app-shell">
@@ -36,9 +41,9 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
       <div className="layout">
-        <Nav items={VIEWS} active={view} onSelect={setView} />
+        <Nav items={views} active={view} onSelect={setView} />
         <div className="content">
-          {view === "home" && (
+          {isHR && view === "home" && (
             <>
               <ClockCard onChange={() => setAttendanceRefresh((n) => n + 1)} />
               <WorkingDays refreshSignal={attendanceRefresh} />
@@ -47,7 +52,7 @@ export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
           {view === "attendance" && <AttendanceTable />}
           {view === "employees" && <EmployeeDirectory />}
           {view === "payroll" && <Payroll />}
-          {view === "feedback" && <FeedbackList />}
+          {isFounder && view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}
         </div>
       </div>

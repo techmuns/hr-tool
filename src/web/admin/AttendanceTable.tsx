@@ -73,9 +73,11 @@ export function AttendanceTable() {
       api.get<AttendanceWithName[]>(`/admin/attendance?month=${month}`),
     ])
       .then(([emps, att]) => {
-        // Everyone tracked for attendance: employees + HR/founders, but not
-        // freelancers or anyone HR has removed from the list.
-        setEmployees(emps.filter((e) => e.employment_type !== "freelancer" && e.on_attendance !== 0));
+        // Tracked for attendance: employees + HR (who clock in), but not
+        // founders (they don't clock in), freelancers, or anyone HR removed.
+        setEmployees(
+          emps.filter((e) => e.tier !== "founder" && e.employment_type !== "freelancer" && e.on_attendance !== 0),
+        );
         setAttendance(att);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));

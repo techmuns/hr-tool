@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
-import { requireAdmin, requireEmployee } from "../auth";
+import { requireEmployee, requireFounder } from "../auth";
 import type { Feedback, FeedbackWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -24,7 +24,7 @@ app.post("/feedback", async (c) => {
   return c.json(row);
 });
 
-app.get("/admin/feedback", requireAdmin, async (c) => {
+app.get("/admin/feedback", requireFounder, async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT f.*, e.name AS employee_name FROM feedback f
      JOIN employees e ON e.id = f.employee_id
