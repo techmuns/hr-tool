@@ -11,7 +11,7 @@ export function RoleManager({
 }: {
   roles: Role[];
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: (renamed?: { from: string; to: string }) => void;
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +44,7 @@ export function RoleManager({
     try {
       await api.patch(`/admin/roles/${r.id}`, { name: trimmed });
       cancelEdit();
-      onChanged();
+      onChanged({ from: r.name, to: trimmed });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to rename role");
     } finally {

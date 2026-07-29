@@ -102,8 +102,17 @@ export function EmployeePanel({
     api.get<Team[]>("/admin/teams").then(setTeams).catch(() => {});
   }
 
-  function loadRoles() {
+  // A role rename only rewrites the roles row and the employees table server-side.
+  // job_title is free text on the employee (no role_id FK), so the copy already
+  // loaded into this drawer has to be rewritten too — otherwise the stale title
+  // lingers as an extra legacy <option> beside the renamed role, the field keeps
+  // reading as the old role, and saving writes the old name straight back.
+  function loadRoles(renamed?: { from: string; to: string }) {
     api.get<Role[]>("/admin/roles").then(setRoles).catch(() => {});
+    if (!renamed) return;
+    setForm((f) => (f.job_title === renamed.from ? { ...f, job_title: renamed.to } : f));
+    setEmployee((e) => (e && e.job_title === renamed.from ? { ...e, job_title: renamed.to } : e));
+    onChanged(); // the directory behind the drawer lists job titles too
   }
 
   useEffect(loadTeams, []);
