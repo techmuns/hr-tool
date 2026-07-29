@@ -2,6 +2,7 @@ export type {
   WorkMode,
   EmployeeRole,
   Tier,
+  EmploymentType,
   AttendanceStatus,
   LeaveType,
   LeaveStatus,

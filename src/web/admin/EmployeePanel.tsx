@@ -5,15 +5,29 @@ import { Tag } from "../components/ui/Tag";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
 import { getSession } from "../session";
+import { confirmDialog } from "../confirm";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
-import type { Employee, EmployeeDetail, LeaveRequest, Payroll, Reimbursement, Role, Team, WorkMode } from "../types";
+import type {
+  Employee,
+  EmployeeDetail,
+  EmploymentType,
+  LeaveRequest,
+  Payroll,
+  Reimbursement,
+  Role,
+  Team,
+  WorkMode,
+} from "../types";
 
 interface FormState {
   name: string;
   email: string;
   location: string;
   work_mode: WorkMode;
+  employment_type: EmploymentType;
+  on_payroll: boolean;
+  on_attendance: boolean;
   date_of_joining: string;
   salaryRupees: string;
   team_id: number | null;
@@ -25,6 +39,9 @@ const EMPTY_FORM: FormState = {
   email: "",
   location: "",
   work_mode: "in-office",
+  employment_type: "employee",
+  on_payroll: true,
+  on_attendance: true,
   date_of_joining: "",
   salaryRupees: "",
   team_id: null,
@@ -37,6 +54,9 @@ function toForm(e: Employee): FormState {
     email: e.email,
     location: e.location,
     work_mode: e.work_mode,
+    employment_type: e.employment_type,
+    on_payroll: e.on_payroll !== 0,
+    on_attendance: e.on_attendance !== 0,
     date_of_joining: e.date_of_joining,
     salaryRupees: (e.monthly_salary / 100).toFixed(2),
     team_id: e.team_id,
@@ -82,8 +102,17 @@ export function EmployeePanel({
     api.get<Team[]>("/admin/teams").then(setTeams).catch(() => {});
   }
 
-  function loadRoles() {
+  // A role rename only rewrites the roles row and the employees table server-side.
+  // job_title is free text on the employee (no role_id FK), so the copy already
+  // loaded into this drawer has to be rewritten too — otherwise the stale title
+  // lingers as an extra legacy <option> beside the renamed role, the field keeps
+  // reading as the old role, and saving writes the old name straight back.
+  function loadRoles(renamed?: { from: string; to: string }) {
     api.get<Role[]>("/admin/roles").then(setRoles).catch(() => {});
+    if (!renamed) return;
+    setForm((f) => (f.job_title === renamed.from ? { ...f, job_title: renamed.to } : f));
+    setEmployee((e) => (e && e.job_title === renamed.from ? { ...e, job_title: renamed.to } : e));
+    onChanged(); // the directory behind the drawer lists job titles too
   }
 
   useEffect(loadTeams, []);
@@ -123,6 +152,9 @@ export function EmployeePanel({
       email: form.email.trim(),
       location: form.location.trim(),
       work_mode: form.work_mode,
+      employment_type: form.employment_type,
+      on_payroll: form.on_payroll,
+      on_attendance: form.on_attendance,
       date_of_joining: form.date_of_joining,
       monthly_salary: Math.round((parseFloat(form.salaryRupees) || 0) * 100),
       team_id: form.team_id,
@@ -145,7 +177,11 @@ export function EmployeePanel({
 
   async function remove() {
     if (isNew || !employee) return;
-    if (!window.confirm(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`)) return;
+    const ok = await confirmDialog(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`, {
+      confirmLabel: "Remove",
+      danger: true,
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
     try {
@@ -174,7 +210,8 @@ export function EmployeePanel({
   }
 
   async function removeReimbursement(id: number) {
-    if (!window.confirm("Remove this reimbursement?")) return;
+    const ok = await confirmDialog("Remove this reimbursement?", { confirmLabel: "Remove", danger: true });
+    if (!ok) return;
     setRemovingReimId(id);
     setError(null);
     try {
@@ -259,21 +296,34 @@ export function EmployeePanel({
               </div>
               <div className="row">
                 <div className="field">
-                  <label>Employee type</label>
+                  <label>Work mode</label>
                   <select value={form.work_mode} onChange={(e) => set("work_mode", e.target.value as WorkMode)}>
                     <option value="in-office">In-office</option>
                     <option value="wfh">WFH / Online</option>
                   </select>
                 </div>
                 <div className="field">
-                  <label>Date of joining</label>
-                  <input
-                    type="date"
-                    value={form.date_of_joining}
-                    onChange={(e) => set("date_of_joining", e.target.value)}
-                  />
-                  {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
+                  <label>Employment type</label>
+                  <select
+                    value={form.employment_type}
+                    onChange={(e) => set("employment_type", e.target.value as EmploymentType)}
+                  >
+                    <option value="employee">Employee</option>
+                    <option value="freelancer">Freelancer</option>
+                  </select>
+                  {form.employment_type === "freelancer" && (
+                    <p className="field-hint">Freelancers are excluded from attendance.</p>
+                  )}
                 </div>
+              </div>
+              <div className="field">
+                <label>Date of joining</label>
+                <input
+                  type="date"
+                  value={form.date_of_joining}
+                  onChange={(e) => set("date_of_joining", e.target.value)}
+                />
+                {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
               </div>
               <div className="row">
                 <div className="field">
@@ -323,6 +373,28 @@ export function EmployeePanel({
                   value={form.salaryRupees}
                   onChange={(e) => set("salaryRupees", e.target.value)}
                 />
+              </div>
+              <div className="field">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.on_payroll}
+                    onChange={(e) => set("on_payroll", e.target.checked)}
+                    style={{ width: "auto" }}
+                  />
+                  Include in payroll
+                </label>
+              </div>
+              <div className="field">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400 }}>
+                  <input
+                    type="checkbox"
+                    checked={form.on_attendance}
+                    onChange={(e) => set("on_attendance", e.target.checked)}
+                    style={{ width: "auto" }}
+                  />
+                  Include in attendance list
+                </label>
               </div>
 
               {!isNew && (

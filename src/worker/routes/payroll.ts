@@ -8,14 +8,15 @@ const app = new Hono<AppEnv>();
 
 app.use("*", requireAdmin);
 
-const WORKING_DAYS_PER_MONTH = 22;
+const WORKING_DAYS_PER_MONTH = 24;
 
 app.get("/admin/payroll", async (c) => {
   const period = c.req.query("period");
   if (!period) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   if (c.req.query("generate") === "1") {
-    const employees = await c.env.DB.prepare("SELECT * FROM employees").all<Employee>();
+    // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
+    const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>();
 
     for (const employee of employees.results) {
       // Not clocking in has no effect on pay — deductions come only from leave.
@@ -72,6 +73,23 @@ app.get("/admin/payroll", async (c) => {
     .all<PayrollWithName>();
 
   return c.json(rows.results);
+});
+
+/**
+ * Remove someone from payroll: flag them off-payroll (so future generations
+ * skip them) and delete their existing payroll rows so they drop off the list.
+ * Re-add them from the employee panel's "Include in payroll" toggle.
+ */
+app.delete("/admin/payroll/employee/:id", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (Number.isNaN(id)) return c.json({ error: "Invalid employee id" }, 400);
+
+  const existing = await c.env.DB.prepare("SELECT id FROM employees WHERE id = ?").bind(id).first();
+  if (!existing) return c.json({ error: "Employee not found" }, 404);
+
+  await c.env.DB.prepare("UPDATE employees SET on_payroll = 0 WHERE id = ?").bind(id).run();
+  await c.env.DB.prepare("DELETE FROM payroll WHERE employee_id = ?").bind(id).run();
+  return c.json({ ok: true });
 });
 
 export default app;

@@ -1,3 +1,8 @@
+// All times come from the worker as UTC ISO strings and are displayed in IST,
+// so everyone sees the same clock regardless of their device's timezone.
+const IST = "Asia/Kolkata";
+const LOCALE = "en-IN";
+
 export function todayISODate(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -8,21 +13,57 @@ export function currentMonth(): string {
 
 export function formatTime(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString(LOCALE, { timeZone: IST, hour: "2-digit", minute: "2-digit" });
 }
 
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  return new Date(iso).toLocaleDateString(LOCALE, { timeZone: IST, month: "short", day: "numeric", year: "numeric" });
 }
 
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleString(LOCALE, {
+    timeZone: IST,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** IST hours (0–23), minutes and seconds for a given instant — for the live clock. */
+export function istClockParts(d: Date): { hours: number; minutes: number; seconds: number } {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(d);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  let hours = get("hour");
+  if (hours === 24) hours = 0; // en-GB renders midnight as "24"
+  return { hours, minutes: get("minute"), seconds: get("second") };
+}
+
+/** e.g. "Friday, July 24" in IST. */
+export function formatDayLabel(d: Date): string {
+  return d.toLocaleDateString(LOCALE, { timeZone: IST, weekday: "long", month: "long", day: "numeric" });
 }
 
 export interface MonthOption {
   value: string; // "YYYY-MM"
   label: string; // "July 2026"
 }
+
+/**
+ * Earliest date the app surfaces in attendance views. Anything before this is
+ * pre-launch noise (no real records), so the grids and month picker hide it.
+ */
+export const EARLIEST_VISIBLE_DATE = "2026-07-19";
+const EARLIEST_VISIBLE_MONTH = EARLIEST_VISIBLE_DATE.slice(0, 7); // "2026-07"
+
+/** Company standard: fixed number of working days per month (used in summaries). */
+export const WORKING_DAYS_PER_MONTH = 24;
 
 /** Recent months, newest first, for the attendance month picker. */
 export function recentMonths(count = 12): MonthOption[] {
@@ -34,18 +75,21 @@ export function recentMonths(count = 12): MonthOption[] {
     const label = d.toLocaleDateString([], { month: "long", year: "numeric" });
     options.push({ value, label });
   }
-  return options;
+  return options.filter((o) => o.value >= EARLIEST_VISIBLE_MONTH);
 }
 
 /**
- * Every day-of-month number for a "YYYY-MM" month, oldest→newest. Leave can
- * be marked ahead of time, so future days can carry data too — the grid
- * always shows the whole month rather than stopping at today.
+ * Every day-of-month number for a "YYYY-MM" month, oldest→newest, excluding any
+ * date before EARLIEST_VISIBLE_DATE. Leave can be marked ahead of time, so
+ * future days can carry data too — the grid shows the rest of the month rather
+ * than stopping at today.
  */
 export function daysForMonth(month: string): number[] {
   const [year, mon] = month.split("-").map(Number);
   const daysInMonth = new Date(year, mon, 0).getDate();
-  return Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  return Array.from({ length: daysInMonth }, (_, i) => i + 1).filter(
+    (day) => dayKey(month, day) >= EARLIEST_VISIBLE_DATE,
+  );
 }
 
 export function dayKey(month: string, day: number): string {

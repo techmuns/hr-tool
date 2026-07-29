@@ -75,9 +75,37 @@
       a { color: var(--indigo); }
       hr { border: 0; border-top: 1px solid var(--border); margin: 14px 0; }
       .hidden { display: none; }
+      .update-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: -4px 0 14px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: rgba(245, 158, 11, 0.14);
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        font-size: 12px;
+      }
+      .update-banner span { flex: 1; }
+      .update-banner button {
+        width: auto;
+        margin: 0;
+        padding: 5px 9px;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 6px;
+        background: #f59e0b;
+        color: #1a1205;
+      }
+      .update-banner button:hover { background: #e08c07; }
     </style>
   </head>
   <body>
+    <div id="update-banner" class="update-banner hidden">
+      <span id="update-text"></span>
+      <button id="update-how" type="button">How to update</button>
+    </div>
+
     <h1>HR Tool Attendance</h1>
 
     <!-- Step 1: request a code -->

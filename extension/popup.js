@@ -100,6 +100,30 @@ async function disconnect() {
   setStatus("Disconnected.");
 }
 
+function renderUpdate(update) {
+  const banner = $("update-banner");
+  if (!update || !update.version) {
+    banner.classList.add("hidden");
+    return;
+  }
+  $("update-text").textContent = `Update available — v${update.version} (you have v${update.current || "?"}).`;
+  banner.classList.remove("hidden");
+  $("update-how").onclick = () => {
+    if (update.url) {
+      chrome.tabs.create({ url: update.url });
+    } else {
+      setStatus("Re-run the installer, then reload the extension on the extensions page.", "ok");
+    }
+  };
+}
+
+function checkUpdate() {
+  chrome.runtime.sendMessage({ type: "check-update" }, (resp) => {
+    if (chrome.runtime.lastError) return;
+    renderUpdate(resp && resp.update);
+  });
+}
+
 async function initShortcutLabels() {
   try {
     const cmds = await chrome.commands.getAll();
@@ -134,3 +158,4 @@ $("shortcuts-link").addEventListener("click", (e) => {
 
 load();
 initShortcutLabels();
+checkUpdate();
