@@ -54,6 +54,11 @@ export interface Reimbursement {
   amount: number;
   note: string;
   created_at: string;
+  /** R2 object key for the attached bill; null when none was uploaded. */
+  bill_key: string | null;
+  bill_name: string | null;
+  bill_type: string | null;
+  bill_size: number | null;
 }
 
 export interface Attendance {

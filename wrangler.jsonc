@@ -21,6 +21,15 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Reimbursement bill attachments. D1 caps a row at 2 MB, under the 3 MB we
+  // accept, so the files go to R2 and D1 keeps only the object key.
+  // One-time setup: `npx wrangler r2 bucket create hr-tool-bills`
+  "r2_buckets": [
+    {
+      "binding": "BILLS",
+      "bucket_name": "hr-tool-bills"
+    }
+  ],
   "observability": {
     "enabled": true
   }

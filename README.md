@@ -19,6 +19,11 @@ npm install
 # database_id into wrangler.jsonc
 npm run db:create
 
+# create the R2 bucket holding reimbursement bill attachments (first time only).
+# The name must match the r2_buckets entry in wrangler.jsonc. Local dev uses a
+# simulated bucket, so this is only needed before deploying.
+npx wrangler r2 bucket create hr-tool-bills
+
 # apply schema + seed data locally
 npm run db:migrate:local
 

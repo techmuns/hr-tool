@@ -4,6 +4,8 @@ import type { Employee } from "./types";
 export type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
+  /** Reimbursement bill attachments — too large for D1. See ./bills.ts. */
+  BILLS: R2Bucket;
   /** Bearer token for the Muns raw email API. Set via `wrangler secret put MUNS_TOKEN`. */
   MUNS_TOKEN: string;
 };

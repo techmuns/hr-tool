@@ -1,6 +1,9 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { AppEnv } from "../auth";
+import type { ReimbursementInput } from "../bills";
 import { requireAdmin, requireEmployee, requireFounder } from "../auth";
+import { deleteBills, putBill, readReimbursementInput } from "../bills";
 import type {
   Attendance,
   Employee,
@@ -16,6 +19,42 @@ import type {
 const app = new Hono<AppEnv>();
 
 app.use("*", requireEmployee);
+
+/**
+ * Shared by the employee-filed and HR-filed routes: upload the bill (if any),
+ * then write the row. If the insert fails the freshly uploaded object is
+ * removed again, so a failed request never leaves an orphan in R2.
+ */
+async function insertReimbursement(
+  c: Context<AppEnv>,
+  employeeId: number,
+  input: ReimbursementInput,
+): Promise<Reimbursement | null> {
+  const bill = input.bill ? await putBill(c, employeeId, input.bill) : null;
+  try {
+    const result = await c.env.DB.prepare(
+      `INSERT INTO reimbursements (employee_id, amount, note, bill_key, bill_name, bill_type, bill_size)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    )
+      .bind(
+        employeeId,
+        input.amount,
+        input.note,
+        bill?.key ?? null,
+        bill?.name ?? null,
+        bill?.type ?? null,
+        bill?.size ?? null,
+      )
+      .run();
+
+    return await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
+      .bind(result.meta.last_row_id)
+      .first<Reimbursement>();
+  } catch (err) {
+    if (bill) await deleteBills(c, [bill.key]);
+    throw err;
+  }
+}
 
 /**
  * One-shot payload for the employee home view: profile, this month's
@@ -75,25 +114,39 @@ app.get("/reimbursements/me", async (c) => {
 
 app.post("/reimbursements", async (c) => {
   const employee = c.get("employee");
-  const body = await c
-    .req.json<{ amount?: number; note?: string }>()
-    .catch(() => ({}) as { amount?: number; note?: string });
+  const input = await readReimbursementInput(c);
+  if ("error" in input) return c.json({ error: input.error }, 400);
 
-  if (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
-    return c.json({ error: "amount must be a positive number" }, 400);
-  }
-  const note = typeof body.note === "string" ? body.note.trim() : "";
+  return c.json(await insertReimbursement(c, employee.id, input), 201);
+});
 
-  const result = await c.env.DB.prepare(
-    "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
-  )
-    .bind(employee.id, Math.round(body.amount), note)
-    .run();
-
-  const created = await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
-    .bind(result.meta.last_row_id)
+/**
+ * Bills are private, so they are served through the Worker rather than from a
+ * public R2 URL — that is the only way the access check below actually runs.
+ * Readable by the employee who filed the reimbursement, or by any admin.
+ */
+app.get("/reimbursements/:id/bill", async (c) => {
+  const id = Number(c.req.param("id"));
+  const row = await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
+    .bind(id)
     .first<Reimbursement>();
-  return c.json(created, 201);
+  if (!row || !row.bill_key) return c.json({ error: "Bill not found" }, 404);
+
+  const viewer = c.get("employee");
+  const isAdmin = viewer.role === "admin" && c.req.header("x-role") === "admin";
+  if (!isAdmin && row.employee_id !== viewer.id) return c.json({ error: "Not allowed" }, 403);
+
+  const object = await c.env.BILLS.get(row.bill_key);
+  if (!object) return c.json({ error: "Bill not found" }, 404);
+
+  return new Response(object.body, {
+    headers: {
+      "Content-Type": row.bill_type || "application/octet-stream",
+      "Content-Length": String(object.size),
+      "Content-Disposition": `inline; filename="${row.bill_name || "bill"}"`,
+      "Cache-Control": "private, max-age=300",
+    },
+  });
 });
 
 app.get("/employees", requireAdmin, async (c) => {
@@ -138,33 +191,21 @@ app.post("/admin/employees/:id/reimbursements", requireAdmin, async (c) => {
   const employee = await c.env.DB.prepare("SELECT id FROM employees WHERE id = ?").bind(id).first();
   if (!employee) return c.json({ error: "Employee not found" }, 404);
 
-  const body = await c
-    .req.json<{ amount?: number; note?: string }>()
-    .catch(() => ({}) as { amount?: number; note?: string });
+  const input = await readReimbursementInput(c);
+  if ("error" in input) return c.json({ error: input.error }, 400);
 
-  if (typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
-    return c.json({ error: "amount must be a positive number" }, 400);
-  }
-  const note = typeof body.note === "string" ? body.note.trim() : "";
-
-  const result = await c.env.DB.prepare(
-    "INSERT INTO reimbursements (employee_id, amount, note) VALUES (?, ?, ?)"
-  )
-    .bind(id, Math.round(body.amount), note)
-    .run();
-
-  const created = await c.env.DB.prepare("SELECT * FROM reimbursements WHERE id = ?")
-    .bind(result.meta.last_row_id)
-    .first<Reimbursement>();
-  return c.json(created, 201);
+  return c.json(await insertReimbursement(c, id, input), 201);
 });
 
 app.delete("/admin/reimbursements/:id", requireAdmin, async (c) => {
   const id = Number(c.req.param("id"));
-  const existing = await c.env.DB.prepare("SELECT id FROM reimbursements WHERE id = ?").bind(id).first();
+  const existing = await c.env.DB.prepare("SELECT bill_key FROM reimbursements WHERE id = ?")
+    .bind(id)
+    .first<{ bill_key: string | null }>();
   if (!existing) return c.json({ error: "Reimbursement not found" }, 404);
 
   await c.env.DB.prepare("DELETE FROM reimbursements WHERE id = ?").bind(id).run();
+  await deleteBills(c, [existing.bill_key]);
   return c.json({ ok: true });
 });
 
@@ -291,7 +332,16 @@ app.delete("/employees/:id", requireAdmin, async (c) => {
   if (!existing) return c.json({ error: "Employee not found" }, 404);
   if (existing.role === "admin") return c.json({ error: "Cannot remove an admin account" }, 400);
 
+  // Read the bill keys before the row disappears: D1 cascades the reimbursement
+  // rows away, but their R2 objects have no cascade and would leak.
+  const bills = await c.env.DB.prepare(
+    "SELECT bill_key FROM reimbursements WHERE employee_id = ? AND bill_key IS NOT NULL"
+  )
+    .bind(id)
+    .all<{ bill_key: string }>();
+
   await c.env.DB.prepare("DELETE FROM employees WHERE id = ?").bind(id).run();
+  await deleteBills(c, (bills.results ?? []).map((r) => r.bill_key));
   return c.json({ ok: true });
 });
 

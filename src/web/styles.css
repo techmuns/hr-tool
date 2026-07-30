@@ -1034,6 +1034,35 @@ thead .hm-name {
   color: var(--muted);
 }
 
+/* Text-only button that reads as a link — used for opening a bill attachment
+   and for clearing a picked file. */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.link-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Keep the native file input from overflowing the narrow drawer column. */
+.field input[type="file"] {
+  max-width: 100%;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
 .inline-form {
   margin-top: 10px;
   padding: 12px;
