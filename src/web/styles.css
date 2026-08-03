@@ -1034,6 +1034,31 @@ thead .hm-name {
   color: var(--muted);
 }
 
+/* Payment status strip above the payroll table: cycle state on the left,
+   the mark-paid and email-payslips actions on the right. */
+.payroll-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.payroll-result {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.payroll-result p {
+  margin: 2px 0;
+}
+
 /* Text-only button that reads as a link — used for opening a bill attachment
    and for clearing a picked file. */
 .link-btn {

@@ -29,6 +29,19 @@ npm run dev:worker
 
 Open the printed `http://localhost:8787`.
 
+## Email (OTP login + payslips)
+
+Outgoing mail goes through the Muns raw email API, authenticated with a
+`MUNS_TOKEN` secret. It is read from the Workers environment and never
+committed — without it, sends fail with a clear message instead of silently
+doing nothing.
+
+```bash
+npx wrangler secret put MUNS_TOKEN     # production
+
+echo 'MUNS_TOKEN=<token>' > .dev.vars  # local dev (.dev.vars is gitignored)
+```
+
 ## Deploy
 
 ```bash

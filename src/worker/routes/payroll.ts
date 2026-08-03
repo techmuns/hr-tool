@@ -2,6 +2,9 @@ import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
 import { businessDaysInRange } from "../db";
+import { sendRawEmail } from "../email";
+import type { PayslipRow } from "../payslip";
+import { payslipSubject, payslipText } from "../payslip";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -49,6 +52,9 @@ app.get("/admin/payroll", async (c) => {
       const deductions = Math.round(dailyRate * unpaidDays);
       const netPay = employee.monthly_salary - deductions + reimbursements;
 
+      // Re-generating recomputes the amounts but deliberately leaves paid_at and
+      // payslip_emailed_at alone: a re-run shouldn't silently forget that this
+      // cycle was already paid out or that payslips already went to people.
       await c.env.DB.prepare(
         `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions, reimbursements, net_pay)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -64,7 +70,7 @@ app.get("/admin/payroll", async (c) => {
   }
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name FROM payroll p
+    `SELECT p.*, e.name AS employee_name, e.email AS employee_email FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`
@@ -73,6 +79,101 @@ app.get("/admin/payroll", async (c) => {
     .all<PayrollWithName>();
 
   return c.json(rows.results);
+});
+
+const PERIOD_RE = /^\d{4}-\d{2}$/;
+
+/**
+ * Mark a whole cycle's dues paid (or undo it). Payroll runs in arrears — a
+ * period's salaries go out on the 11th of the following month — so this is the
+ * record of "we've actually transferred this month's money".
+ */
+app.post("/admin/payroll/paid", async (c) => {
+  const body = await c.req
+    .json<{ period?: string; paid?: boolean }>()
+    .catch(() => ({}) as { period?: string; paid?: boolean });
+
+  const period = typeof body.period === "string" ? body.period : "";
+  if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+  const paid = body.paid !== false; // default to marking paid
+
+  const result = await c.env.DB.prepare(
+    `UPDATE payroll SET paid_at = ${paid ? "datetime('now')" : "NULL"} WHERE period = ?`
+  )
+    .bind(period)
+    .run();
+
+  if (!result.meta.changes) {
+    return c.json({ error: "No payroll for that period yet — generate it first" }, 404);
+  }
+  return c.json({ ok: true, updated: result.meta.changes });
+});
+
+/** Guard against a bulk send blowing the Worker's per-request subrequest limit. */
+const MAX_EMAILS_PER_REQUEST = 100;
+
+interface PayslipQueryRow extends PayslipRow {
+  id: number;
+  employee_email: string | null;
+}
+
+/**
+ * Email payslips for a period to the selected employees. Sends are independent:
+ * one bad address doesn't abort the rest, and the response reports exactly who
+ * went out and who didn't, so HR can retry just the failures.
+ */
+app.post("/admin/payroll/email", async (c) => {
+  const body = await c.req
+    .json<{ period?: string; employee_ids?: number[] }>()
+    .catch(() => ({}) as { period?: string; employee_ids?: number[] });
+
+  const period = typeof body.period === "string" ? body.period : "";
+  if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+
+  const ids = Array.isArray(body.employee_ids) ? body.employee_ids.filter((n) => Number.isInteger(n)) : [];
+  if (ids.length === 0) return c.json({ error: "Select at least one employee to email" }, 400);
+  if (ids.length > MAX_EMAILS_PER_REQUEST) {
+    return c.json({ error: `Select at most ${MAX_EMAILS_PER_REQUEST} people per send` }, 400);
+  }
+
+  const rows = await c.env.DB.prepare(
+    `SELECT p.id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
+            p.deductions, p.net_pay, p.paid_at,
+            e.name AS employee_name, e.email AS employee_email, e.job_title, e.date_of_joining,
+            t.name AS team_name
+     FROM payroll p
+     JOIN employees e ON e.id = p.employee_id
+     LEFT JOIN teams t ON t.id = e.team_id
+     WHERE p.period = ? AND p.employee_id IN (${ids.map(() => "?").join(",")})
+     ORDER BY e.name ASC`
+  )
+    .bind(period, ...ids)
+    .all<PayslipQueryRow>();
+
+  const sent: string[] = [];
+  const failed: { name: string; error: string }[] = [];
+
+  for (const row of rows.results ?? []) {
+    if (!row.employee_email) {
+      failed.push({ name: row.employee_name, error: "No email address on file" });
+      continue;
+    }
+    try {
+      await sendRawEmail(c.env, {
+        email: row.employee_email,
+        subject: payslipSubject(period),
+        text: payslipText(row),
+      });
+      await c.env.DB.prepare("UPDATE payroll SET payslip_emailed_at = datetime('now') WHERE id = ?")
+        .bind(row.id)
+        .run();
+      sent.push(row.employee_name);
+    } catch (err) {
+      failed.push({ name: row.employee_name, error: err instanceof Error ? err.message : "Send failed" });
+    }
+  }
+
+  return c.json({ sent, failed });
 });
 
 /**
