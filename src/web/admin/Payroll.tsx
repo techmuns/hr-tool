@@ -6,7 +6,7 @@ import { currentMonth, formatDate } from "../date";
 import { confirmDialog } from "../confirm";
 import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
-import { payDueDate, periodLabel } from "../../worker/payslip";
+import { cycleLabel, payDueDate } from "../../worker/payslip";
 import type { PayrollWithName } from "../types";
 
 interface EmailResult {
@@ -89,7 +89,7 @@ export function Payroll() {
   async function setPaid(paid: boolean) {
     if (paid) {
       const ok = await confirmDialog(
-        `Mark ${periodLabel(period)} dues as paid for all ${rows.length} people on this payroll?`,
+        `Mark the ${cycleLabel(period)} cycle as paid for all ${rows.length} people on this payroll?`,
         { confirmLabel: "Mark paid" },
       );
       if (!ok) return;
@@ -149,6 +149,9 @@ export function Payroll() {
           <div>
             <strong>{allPaid ? "Dues paid" : "Dues outstanding"}</strong>
             <span className="muted">
+              {/* The month picker says "August 2026", but the cycle it bills is
+                  11 Aug – 10 Sep — spell that out so the two can't be confused. */}
+              {` · cycle ${cycleLabel(period)}`}
               {allPaid && paidOn
                 ? ` · marked paid ${formatDate(paidOn)}`
                 : ` · due ${formatDate(payDueDate(period))}`}

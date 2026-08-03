@@ -4,7 +4,7 @@ import { requireAdmin } from "../auth";
 import { businessDaysInRange } from "../db";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payslipSubject, payslipText } from "../payslip";
+import { payCycle, payslipSubject, payslipText } from "../payslip";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -18,14 +18,18 @@ app.get("/admin/payroll", async (c) => {
   if (!period) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   if (c.req.query("generate") === "1") {
+    // Billing runs 11th-to-10th, not calendar months: period 2026-08 covers
+    // 11 Aug – 10 Sep and is paid on 11 Sep. Both windows below key off this.
+    const cycle = payCycle(period);
+
     // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
     const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>();
 
     for (const employee of employees.results) {
       // Not clocking in has no effect on pay — deductions come only from leave.
 
-      // Unpaid leave days that fall inside the period (leave requests store
-      // ranges, so expand them to business days and count those in-period).
+      // Unpaid leave days that fall inside the cycle (leave requests store
+      // ranges, so expand them to business days and count those in-cycle).
       const unpaidLeaves = await c.env.DB.prepare(
         `SELECT start_date, end_date FROM leave_requests
          WHERE employee_id = ? AND leave_type = 'unpaid' AND status = 'approved'`
@@ -34,15 +38,19 @@ app.get("/admin/payroll", async (c) => {
         .all<{ start_date: string; end_date: string }>();
       let unpaidLeaveDays = 0;
       for (const l of unpaidLeaves.results) {
-        unpaidLeaveDays += businessDaysInRange(l.start_date, l.end_date).filter((d) => d.startsWith(period)).length;
+        unpaidLeaveDays += businessDaysInRange(l.start_date, l.end_date).filter(
+          (d) => d >= cycle.start && d <= cycle.end,
+        ).length;
       }
 
-      // Reimbursements submitted during the period, added on top of salary.
+      // Reimbursements submitted during the cycle, added on top of salary.
+      // created_at is "YYYY-MM-DD HH:MM:SS", so a plain string range works: the
+      // upper bound is the pay date itself, which excludes it and everything after.
       const reimbursementRow = await c.env.DB.prepare(
         `SELECT COALESCE(SUM(amount), 0) AS total FROM reimbursements
-         WHERE employee_id = ? AND created_at LIKE ?`
+         WHERE employee_id = ? AND created_at >= ? AND created_at < ?`
       )
-        .bind(employee.id, `${period}%`)
+        .bind(employee.id, cycle.start, cycle.payDate)
         .first<{ total: number }>();
       const reimbursements = reimbursementRow?.total ?? 0;
 

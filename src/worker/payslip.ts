@@ -25,17 +25,6 @@ function money(paise: number): string {
   return inr.format(paise / 100);
 }
 
-/** "2026-08" -> "August 2026". */
-export function periodLabel(period: string): string {
-  const [year, month] = period.split("-").map(Number);
-  if (!year || !month) return period;
-  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-IN", {
-    timeZone: "UTC",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 /** "2026-08-11" -> "11 Aug 2026". */
 function dateLabel(iso: string): string {
   const d = new Date(iso.length > 10 ? iso.replace(" ", "T") + "Z" : `${iso}T00:00:00Z`);
@@ -48,16 +37,50 @@ function dateLabel(iso: string): string {
   });
 }
 
+export interface PayCycle {
+  /** First day covered, inclusive — the 11th of the period's own month. */
+  start: string;
+  /** Last day covered, inclusive — the 10th of the following month. */
+  end: string;
+  /** The day the money goes out: the 11th, right after the cycle closes. */
+  payDate: string;
+}
+
 /**
- * The date a period's salaries are due: the 11th of the *following* month.
- * Payroll runs in arrears, so August's payroll is settled on 11 September.
+ * The pay cycle a "YYYY-MM" period stands for. Billing runs 11th-to-10th, not
+ * calendar months: period 2026-08 covers 11 Aug – 10 Sep 2026 and is paid on
+ * 11 Sep. Everything that has to line up with a cycle — the unpaid-leave window,
+ * the reimbursement window, the payslip header — derives from this one function.
  */
-export function payDueDate(period: string): string {
+export function payCycle(period: string): PayCycle {
   const [year, month] = period.split("-").map(Number);
-  if (!year || !month) return "";
-  // `month` is 1-based, and the Date month argument is 0-based, so passing it
-  // straight through already lands on the following month.
-  return new Date(Date.UTC(year, month, 11)).toISOString().slice(0, 10);
+  if (!year || !month) return { start: "", end: "", payDate: "" };
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  // `month` is 1-based and the Date argument is 0-based, so `month` on its own
+  // already means "the following month".
+  return {
+    start: iso(new Date(Date.UTC(year, month - 1, 11))),
+    end: iso(new Date(Date.UTC(year, month, 10))),
+    payDate: iso(new Date(Date.UTC(year, month, 11))),
+  };
+}
+
+/** The date a period's salaries are due — the 11th that closes the cycle. */
+export function payDueDate(period: string): string {
+  return payCycle(period).payDate;
+}
+
+/** "2026-08" -> "11 Aug – 10 Sep 2026", the span the payslip actually covers. */
+export function cycleLabel(period: string): string {
+  const { start, end } = payCycle(period);
+  if (!start || !end) return period;
+  const short = (iso: string) =>
+    new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", {
+      timeZone: "UTC",
+      day: "numeric",
+      month: "short",
+    });
+  return `${short(start)} – ${short(end)} ${end.slice(0, 4)}`;
 }
 
 export interface PayslipRow {
@@ -76,7 +99,7 @@ export interface PayslipRow {
 }
 
 export function payslipSubject(period: string): string {
-  return `Payslip — ${periodLabel(period)}`;
+  return `Payslip — ${cycleLabel(period)}`;
 }
 
 function row(label: string, amount: number): string {
@@ -95,8 +118,8 @@ export function payslipText(r: PayslipRow): string {
   const totalEarnings = r.base_salary + r.reimbursements;
   const lines: string[] = [
     `${COMPANY_NAME} — PAYSLIP`,
-    periodLabel(r.period),
     "",
+    field("Pay Period", cycleLabel(r.period)),
     field("Employee Name", r.employee_name),
     field("Designation", r.job_title || "—"),
     field("Department", r.team_name || "—"),
