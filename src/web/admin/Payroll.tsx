@@ -12,6 +12,8 @@ import type { PayrollWithName } from "../types";
 interface EmailResult {
   sent: string[];
   failed: { name: string; error: string }[];
+  /** Anyone the API refused the formatted payslip for, who got plain text. */
+  plainText?: string[];
 }
 
 export function Payroll() {
@@ -178,6 +180,13 @@ export function Payroll() {
             <p className="muted">
               Payslip sent to {result.sent.length} {result.sent.length === 1 ? "person" : "people"}:{" "}
               {result.sent.join(", ")}.
+            </p>
+          )}
+          {result.plainText && result.plainText.length > 0 && (
+            <p className="error-text">
+              The mail API rejected the formatted payslip for {result.plainText.length}{" "}
+              {result.plainText.length === 1 ? "person" : "people"} — they were sent the plain-text
+              version instead ({result.plainText.join(", ")}).
             </p>
           )}
           {result.failed.map((f) => (
