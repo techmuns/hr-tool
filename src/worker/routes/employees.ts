@@ -211,7 +211,7 @@ interface EmployeeWriteBody {
 }
 
 function normalizeWorkMode(value: unknown, fallback: WorkMode): WorkMode {
-  return value === "wfh" || value === "in-office" ? value : fallback;
+  return value === "wfh" || value === "in-office" || value === "hybrid" ? value : fallback;
 }
 
 function normalizeEmploymentType(value: unknown, fallback: EmploymentType): EmploymentType {

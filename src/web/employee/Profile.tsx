@@ -8,6 +8,7 @@ import type { Employee, WorkMode } from "../types";
 const WORK_MODE_LABEL: Record<WorkMode, string> = {
   "in-office": "In-office",
   wfh: "WFH / Online",
+  hybrid: "Hybrid",
 };
 
 export function Profile() {

@@ -10,6 +10,7 @@ import type { Employee, WorkMode } from "../types";
 const WORK_MODE_LABEL: Record<WorkMode, string> = {
   "in-office": "In-office",
   wfh: "WFH / Online",
+  hybrid: "Hybrid",
 };
 
 export function EmployeeDirectory() {
@@ -70,6 +71,7 @@ export function EmployeeDirectory() {
             <option value="">All modes</option>
             <option value="in-office">In-office</option>
             <option value="wfh">WFH / Online</option>
+            <option value="hybrid">Hybrid</option>
           </select>
         </div>
         <div className="field">

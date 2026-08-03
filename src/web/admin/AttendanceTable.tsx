@@ -27,6 +27,7 @@ const SORT_LABEL: Record<SortKey, string> = {
 const WORK_MODE_LABEL: Record<string, string> = {
   "in-office": "In-office",
   wfh: "WFH / Online",
+  hybrid: "Hybrid",
 };
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
