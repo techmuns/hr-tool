@@ -64,7 +64,7 @@ export function EmployeeDirectory() {
           <label>Search</label>
           <input
             type="text"
-            placeholder="Name, email, role, team…"
+            placeholder="Name, email, designation…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -102,10 +102,8 @@ export function EmployeeDirectory() {
         <thead>
           <tr>
             <th>Name</th>
-            <th>Team</th>
             <th>Email</th>
-            <th>Role</th>
-            <th>Access</th>
+            <th>Designation</th>
             <th>Type</th>
             <th>Joined</th>
           </tr>
@@ -123,17 +121,15 @@ export function EmployeeDirectory() {
                   </span>
                 )}
               </td>
-              <td>{emp.team_name || <span className="muted">—</span>}</td>
               <td>{emp.email || <span className="muted">—</span>}</td>
               <td>{emp.job_title || <span className="muted">—</span>}</td>
-              <td>{emp.tier === "employee" ? <span className="muted">—</span> : <Tag value={emp.tier} />}</td>
               <td>{WORK_MODE_LABEL[emp.work_mode]}</td>
               <td>{formatDate(emp.date_of_joining)}</td>
             </tr>
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
+              <td colSpan={5} className="muted">
                 No employees match these filters.
               </td>
             </tr>
