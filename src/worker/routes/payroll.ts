@@ -4,7 +4,7 @@ import { requireAdmin } from "../auth";
 import { businessDaysInRange } from "../db";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payCycle, payslipHtml, payslipSubject, payslipText } from "../payslip";
+import { payCycle, payslipSubject, payslipText } from "../payslip";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -158,8 +158,6 @@ app.post("/admin/payroll/email", async (c) => {
 
   const sent: string[] = [];
   const failed: { name: string; error: string }[] = [];
-  // Anyone the API refused the formatted slip for, who got plain text instead.
-  const plainText: string[] = [];
 
   for (const row of rows.results ?? []) {
     if (!row.employee_email) {
@@ -167,16 +165,11 @@ app.post("/admin/payroll/email", async (c) => {
       continue;
     }
     try {
-      const outcome = await sendRawEmail(c.env, {
+      await sendRawEmail(c.env, {
         email: row.employee_email,
         subject: payslipSubject(period),
-        // `text` is the only body field the API takes, and it renders it as
-        // HTML — so the markup goes there. payslipText is only reached if that
-        // request is rejected outright (see sendRawEmail).
-        text: payslipHtml(row),
-        textFallback: payslipText(row),
+        text: payslipText(row),
       });
-      if (outcome.fellBack) plainText.push(row.employee_name);
       await c.env.DB.prepare("UPDATE payroll SET payslip_emailed_at = datetime('now') WHERE id = ?")
         .bind(row.id)
         .run();
@@ -186,7 +179,7 @@ app.post("/admin/payroll/email", async (c) => {
     }
   }
 
-  return c.json({ sent, failed, plainText });
+  return c.json({ sent, failed });
 });
 
 /**
