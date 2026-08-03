@@ -1697,3 +1697,41 @@ thead .hm-name {
     gap: 8px;
   }
 }
+
+/* Broadcast composer in the admin chat: pick recipients, write once, send into
+   each of their threads. */
+.broadcast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.broadcast-people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.broadcast-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.broadcast-person input {
+  width: auto;
+  margin: 0;
+}

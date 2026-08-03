@@ -46,7 +46,7 @@ export function RoleManager({
       cancelEdit();
       onChanged({ from: r.name, to: trimmed });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to rename role");
+      setError(err instanceof Error ? err.message : "Failed to rename designation");
     } finally {
       setSavingEdit(false);
     }
@@ -62,14 +62,14 @@ export function RoleManager({
       setName("");
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add role");
+      setError(err instanceof Error ? err.message : "Failed to add designation");
     } finally {
       setBusy(false);
     }
   }
 
   async function removeRole(id: number) {
-    const ok = await confirmDialog("Delete this role? Employees currently on it keep their job title.", {
+    const ok = await confirmDialog("Delete this designation? Employees currently on it keep their job title.", {
       confirmLabel: "Delete",
       danger: true,
     });
@@ -80,7 +80,7 @@ export function RoleManager({
       await api.del(`/admin/roles/${id}`);
       onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete role");
+      setError(err instanceof Error ? err.message : "Failed to delete designation");
     } finally {
       setRemovingId(null);
     }
@@ -89,9 +89,9 @@ export function RoleManager({
   return (
     <>
       <div className="modal-backdrop" onClick={onClose} />
-      <div className="modal" role="dialog" aria-label="Manage roles">
+      <div className="modal" role="dialog" aria-label="Manage designations">
         <div className="modal-head">
-          <h2>Manage roles</h2>
+          <h2>Manage designations</h2>
           <button className="btn icon-btn" onClick={onClose} aria-label="Close">
             ✕
           </button>
@@ -99,7 +99,7 @@ export function RoleManager({
         <div className="modal-body">
           {error && <p className="error-text">{error}</p>}
           {roles.length === 0 ? (
-            <p className="muted">No roles yet.</p>
+            <p className="muted">No designations yet.</p>
           ) : (
             <ul className="team-list">
               {roles.map((r) =>
@@ -145,7 +145,7 @@ export function RoleManager({
                       <button
                         type="button"
                         className="row-edit-btn"
-                        title="Rename role"
+                        title="Rename designation"
                         disabled={removingId === r.id}
                         onClick={() => startEdit(r)}
                       >
@@ -154,7 +154,7 @@ export function RoleManager({
                       <button
                         type="button"
                         className="row-remove-btn"
-                        title="Delete role"
+                        title="Delete designation"
                         disabled={removingId === r.id}
                         onClick={() => removeRole(r.id)}
                       >
@@ -169,7 +169,7 @@ export function RoleManager({
           <form className="composer" onSubmit={addRole} style={{ marginTop: 14 }}>
             <input
               type="text"
-              placeholder="New role name"
+              placeholder="New designation"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />

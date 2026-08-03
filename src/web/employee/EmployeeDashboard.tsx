@@ -9,7 +9,7 @@ import { ReimbursementRequest } from "./ReimbursementRequest";
 import { FeedbackForm } from "./FeedbackForm";
 import { Chat } from "./Chat";
 import { api, primeEmployeeBootstrap } from "../api";
-import type { EmployeeWithTeam } from "../types";
+import type { Employee } from "../types";
 
 const VIEWS = [
   { key: "home", label: "Home" },
@@ -20,7 +20,7 @@ const VIEWS = [
 export function EmployeeDashboard() {
   const [view, setView] = useState("home");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
-  const [employee, setEmployee] = useState<EmployeeWithTeam | null>(null);
+  const [employee, setEmployee] = useState<Employee | null>(null);
 
   // Seed the cache from a single batched request before the child components'
   // mount effects fire, so /me, attendance, leave and reimbursements resolve
@@ -31,7 +31,7 @@ export function EmployeeDashboard() {
   });
 
   useEffect(() => {
-    api.get<EmployeeWithTeam>("/me").then(setEmployee).catch(() => setEmployee(null));
+    api.get<Employee>("/me").then(setEmployee).catch(() => setEmployee(null));
   }, []);
 
   return (

@@ -55,4 +55,55 @@ app.post("/chat", async (c) => {
   return c.json(row);
 });
 
+/**
+ * Send one message into many employees' threads at once.
+ *
+ * There is no group chat here — every thread is one employee talking to HR — so
+ * a broadcast is a copy per thread rather than a shared message. That keeps
+ * replies private: each person answers into their own thread and sees only
+ * their own conversation.
+ *
+ * Omit employee_ids (or send an empty list) to reach everyone.
+ */
+app.post("/admin/chat/broadcast", requireAdmin, async (c) => {
+  const body = await c.req
+    .json<{ body?: string; employee_ids?: number[] }>()
+    .catch(() => ({}) as { body?: string; employee_ids?: number[] });
+
+  const message = typeof body.body === "string" ? body.body.trim() : "";
+  if (!message) return c.json({ error: "Message body is required" }, 400);
+
+  const requested = Array.isArray(body.employee_ids)
+    ? body.employee_ids.filter((n) => Number.isInteger(n))
+    : [];
+
+  // Resolve against the employee list either way, so a stale id from the client
+  // can't create a thread for someone who no longer exists.
+  const recipients = requested.length
+    ? await c.env.DB.prepare(
+        `SELECT id, name FROM employees WHERE role = 'employee' AND id IN (${requested.map(() => "?").join(",")})`
+      )
+        .bind(...requested)
+        .all<{ id: number; name: string }>()
+    : await c.env.DB.prepare("SELECT id, name FROM employees WHERE role = 'employee' ORDER BY name").all<{
+        id: number;
+        name: string;
+      }>();
+
+  const rows = recipients.results ?? [];
+  if (rows.length === 0) return c.json({ error: "No matching employees to message" }, 400);
+
+  // One batch: either every thread gets the message or none does.
+  await c.env.DB.batch(
+    rows.map((r) =>
+      c.env.DB.prepare("INSERT INTO chat_messages (employee_id, sender_role, body) VALUES (?, 'admin', ?)").bind(
+        r.id,
+        message,
+      ),
+    ),
+  );
+
+  return c.json({ sent: rows.length, names: rows.map((r) => r.name) });
+});
+
 export default app;

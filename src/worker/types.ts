@@ -21,12 +21,13 @@ export interface Employee {
   on_attendance: number; // 0 | 1
   monthly_salary: number;
   created_at: string;
+  /**
+   * Teams were removed from the product; designation (job_title) is the only
+   * grouping now. The column still exists so no data is destroyed, but nothing
+   * reads or writes it.
+   */
   team_id: number | null;
   job_title: string;
-}
-
-export interface EmployeeWithTeam extends Employee {
-  team_name: string | null;
 }
 
 export interface EmployeeDetail {
@@ -34,12 +35,6 @@ export interface EmployeeDetail {
   leaves: LeaveRequest[];
   payroll: Payroll[];
   reimbursements: Reimbursement[];
-}
-
-export interface Team {
-  id: number;
-  name: string;
-  created_at: string;
 }
 
 export interface Role {

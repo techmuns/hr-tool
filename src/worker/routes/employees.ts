@@ -7,7 +7,6 @@ import { deleteBills, putBill, readReimbursementInput } from "../bills";
 import type {
   Attendance,
   Employee,
-  EmployeeWithTeam,
   EmploymentType,
   LeaveRequest,
   Payroll,
@@ -66,11 +65,7 @@ app.get("/employee/bootstrap", async (c) => {
   const month = c.req.query("month") || new Date().toISOString().slice(0, 7);
 
   const [meRes, attRes, leaveRes, reimbRes] = await c.env.DB.batch([
-    c.env.DB.prepare(
-      `SELECT e.*, t.name AS team_name FROM employees e
-       LEFT JOIN teams t ON t.id = e.team_id
-       WHERE e.id = ?`
-    ).bind(employee.id),
+    c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(employee.id),
     c.env.DB.prepare(
       "SELECT * FROM attendance WHERE employee_id = ? AND work_date LIKE ? ORDER BY work_date DESC"
     ).bind(employee.id, `${month}%`),
@@ -83,7 +78,7 @@ app.get("/employee/bootstrap", async (c) => {
   ]);
 
   return c.json({
-    me: (meRes.results?.[0] as EmployeeWithTeam) ?? null,
+    me: (meRes.results?.[0] as Employee) ?? null,
     attendance: (attRes.results ?? []) as Attendance[],
     leave: (leaveRes.results ?? []) as LeaveRequest[],
     reimbursements: (reimbRes.results ?? []) as Reimbursement[],
@@ -92,14 +87,10 @@ app.get("/employee/bootstrap", async (c) => {
 
 app.get("/me", async (c) => {
   const employee = c.get("employee");
-  const withTeam = await c.env.DB.prepare(
-    `SELECT e.*, t.name AS team_name FROM employees e
-     LEFT JOIN teams t ON t.id = e.team_id
-     WHERE e.id = ?`
-  )
+  const row = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
     .bind(employee.id)
-    .first<EmployeeWithTeam>();
-  return c.json(withTeam);
+    .first<Employee>();
+  return c.json(row);
 });
 
 app.get("/reimbursements/me", async (c) => {
@@ -151,11 +142,7 @@ app.get("/reimbursements/:id/bill", async (c) => {
 });
 
 app.get("/employees", requireAdmin, async (c) => {
-  const employees = await c.env.DB.prepare(
-    `SELECT e.*, t.name AS team_name FROM employees e
-     LEFT JOIN teams t ON t.id = e.team_id
-     ORDER BY e.id`
-  ).all<EmployeeWithTeam>();
+  const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
   return c.json(employees.results);
 });
 
@@ -220,7 +207,6 @@ interface EmployeeWriteBody {
   on_attendance?: boolean;
   date_of_joining?: string;
   monthly_salary?: number;
-  team_id?: number | null;
   job_title?: string;
 }
 
@@ -230,12 +216,6 @@ function normalizeWorkMode(value: unknown, fallback: WorkMode): WorkMode {
 
 function normalizeEmploymentType(value: unknown, fallback: EmploymentType): EmploymentType {
   return value === "employee" || value === "freelancer" ? value : fallback;
-}
-
-function normalizeTeamId(value: unknown, fallback: number | null): number | null {
-  if (value === null) return null;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return fallback;
 }
 
 app.post("/employees", requireAdmin, async (c) => {
@@ -256,14 +236,13 @@ app.post("/employees", requireAdmin, async (c) => {
       : new Date().toISOString().slice(0, 10);
   const monthly_salary =
     typeof body.monthly_salary === "number" && Number.isFinite(body.monthly_salary) ? body.monthly_salary : 0;
-  const team_id = normalizeTeamId(body.team_id, null);
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : "";
 
   const result = await c.env.DB.prepare(
-    `INSERT INTO employees (name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, role, monthly_salary, team_id, job_title)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employee', ?, ?, ?)`
+    `INSERT INTO employees (name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, role, monthly_salary, job_title)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'employee', ?, ?)`
   )
-    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, team_id, job_title)
+    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, job_title)
     .run();
 
   const created = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
@@ -293,14 +272,13 @@ app.patch("/employees/:id", requireAdmin, async (c) => {
     typeof body.monthly_salary === "number" && Number.isFinite(body.monthly_salary)
       ? body.monthly_salary
       : existing.monthly_salary;
-  const team_id = normalizeTeamId(body.team_id, existing.team_id);
   const job_title = typeof body.job_title === "string" ? body.job_title.trim() : existing.job_title;
 
   await c.env.DB.prepare(
     `UPDATE employees SET name = ?, email = ?, location = ?, work_mode = ?, employment_type = ?, on_payroll = ?, on_attendance = ?, date_of_joining = ?,
-     monthly_salary = ?, team_id = ?, job_title = ? WHERE id = ?`
+     monthly_salary = ?, job_title = ? WHERE id = ?`
   )
-    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, team_id, job_title, id)
+    .bind(name, email, location, work_mode, employment_type, on_payroll, on_attendance, date_of_joining, monthly_salary, job_title, id)
     .run();
 
   const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();

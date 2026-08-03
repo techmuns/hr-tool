@@ -6,7 +6,6 @@ import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
 import { getSession } from "../session";
 import { confirmDialog } from "../confirm";
-import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
 import { BILLS_ENABLED, BillLink, BillPicker } from "../components/Bill";
 import type {
@@ -17,7 +16,6 @@ import type {
   Payroll,
   Reimbursement,
   Role,
-  Team,
   WorkMode,
 } from "../types";
 
@@ -31,7 +29,6 @@ interface FormState {
   on_attendance: boolean;
   date_of_joining: string;
   salaryRupees: string;
-  team_id: number | null;
   job_title: string;
 }
 
@@ -45,7 +42,6 @@ const EMPTY_FORM: FormState = {
   on_attendance: true,
   date_of_joining: "",
   salaryRupees: "",
-  team_id: null,
   job_title: "",
 };
 
@@ -60,7 +56,6 @@ function toForm(e: Employee): FormState {
     on_attendance: e.on_attendance !== 0,
     date_of_joining: e.date_of_joining,
     salaryRupees: (e.monthly_salary / 100).toFixed(2),
-    team_id: e.team_id,
     job_title: e.job_title,
   };
 }
@@ -92,18 +87,12 @@ export function EmployeePanel({
   const [reimBusy, setReimBusy] = useState(false);
   const [removingReimId, setRemovingReimId] = useState<number | null>(null);
 
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [showTeamManager, setShowTeamManager] = useState(false);
-
   const [roles, setRoles] = useState<Role[]>([]);
   const [showRoleManager, setShowRoleManager] = useState(false);
 
   const [tierBusy, setTierBusy] = useState(false);
   const viewerTier = getSession()?.tier;
-
-  function loadTeams() {
-    api.get<Team[]>("/admin/teams").then(setTeams).catch(() => {});
-  }
+  const isFounder = employee?.tier === "founder";
 
   // A role rename only rewrites the roles row and the employees table server-side.
   // job_title is free text on the employee (no role_id FK), so the copy already
@@ -118,7 +107,6 @@ export function EmployeePanel({
     onChanged(); // the directory behind the drawer lists job titles too
   }
 
-  useEffect(loadTeams, []);
   useEffect(loadRoles, []);
 
   function loadDetail() {
@@ -160,7 +148,6 @@ export function EmployeePanel({
       on_attendance: form.on_attendance,
       date_of_joining: form.date_of_joining,
       monthly_salary: Math.round((parseFloat(form.salaryRupees) || 0) * 100),
-      team_id: form.team_id,
       job_title: form.job_title.trim(),
     };
     try {
@@ -323,40 +310,23 @@ export function EmployeePanel({
                   )}
                 </div>
               </div>
-              <div className="field">
-                <label>Date of joining</label>
-                <input
-                  type="date"
-                  value={form.date_of_joining}
-                  onChange={(e) => set("date_of_joining", e.target.value)}
-                />
-                {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
-              </div>
-              <div className="row">
+              {/* Founders don't have a joining date — they were not hired in. */}
+              {!isFounder && (
                 <div className="field">
-                  <label>Team</label>
-                  <div style={{ display: "flex", gap: 6 }}>
-                    <select
-                      value={form.team_id ?? ""}
-                      onChange={(e) => set("team_id", e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">No team</option>
-                      {teams.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button type="button" onClick={() => setShowTeamManager(true)} title="Manage teams">
-                      Manage
-                    </Button>
-                  </div>
+                  <label>Date of joining</label>
+                  <input
+                    type="date"
+                    value={form.date_of_joining}
+                    onChange={(e) => set("date_of_joining", e.target.value)}
+                  />
+                  {form.date_of_joining && <p className="field-hint">{tenure(form.date_of_joining)}</p>}
                 </div>
-                <div className="field">
-                  <label>Role</label>
+              )}
+              <div className="field">
+                  <label>Designation</label>
                   <div style={{ display: "flex", gap: 6 }}>
                     <select value={form.job_title} onChange={(e) => set("job_title", e.target.value)}>
-                      <option value="">No role</option>
+                      <option value="">No designation</option>
                       {form.job_title && !roles.some((r) => r.name === form.job_title) && (
                         <option value={form.job_title}>{form.job_title}</option>
                       )}
@@ -366,11 +336,10 @@ export function EmployeePanel({
                         </option>
                       ))}
                     </select>
-                    <Button type="button" onClick={() => setShowRoleManager(true)} title="Manage roles">
+                    <Button type="button" onClick={() => setShowRoleManager(true)} title="Manage designations">
                       Manage
                     </Button>
                   </div>
-                </div>
               </div>
               <div className="field">
                 <label>Monthly salary (INR)</label>
@@ -569,14 +538,6 @@ export function EmployeePanel({
           </div>
         </div>
       </aside>
-
-      {showTeamManager && (
-        <TeamManager
-          teams={teams}
-          onClose={() => setShowTeamManager(false)}
-          onChanged={loadTeams}
-        />
-      )}
 
       {showRoleManager && (
         <RoleManager
