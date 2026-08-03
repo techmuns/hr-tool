@@ -1570,3 +1570,130 @@ thead .hm-name {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Phones
+   ---------------------------------------------------------------------------
+   The clock card is a two-column layout — a fixed 168px face beside a text
+   column — which needs a good 400px to breathe. Below that the face is wider
+   than the space left for it, so it overflows its card. On a phone the card
+   stacks into a single centred column instead, and the face scales with the
+   viewport rather than staying pinned at 168px.
+   --------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .clock-card {
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    text-align: center;
+  }
+
+  /* aspect-ratio keeps it square while the width tracks the viewport; the SVG
+     scales itself because it is sized by viewBox, not fixed pixels. */
+  .clock-face-wrap {
+    width: min(168px, 58vw);
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+
+  .clock-body {
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .clock-digital {
+    justify-content: center;
+    font-size: 44px;
+  }
+
+  /* align-self: flex-start on the pill would pin it left of a centred column */
+  .clock-status {
+    align-self: center;
+  }
+
+  .clock-stamps {
+    justify-content: center;
+    gap: 30px;
+  }
+
+  .clock-stamp {
+    align-items: center;
+  }
+
+  /* Full-width so it is a comfortable thumb target. */
+  .clock-action {
+    width: 100%;
+  }
+
+  .clock-page {
+    padding: 16px 14px 28px;
+    align-items: flex-start;
+  }
+
+  .clock-page-inner {
+    padding-top: 8px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phones — app shell
+   ---------------------------------------------------------------------------
+   The dashboard is a fixed 200px sidebar beside the content. On a 375px phone
+   that leaves ~175px for everything else, which squeezed cards down to ~127px
+   and pushed the clock face and the attendance grid off-screen. Below the
+   breakpoint the nav becomes a horizontal strip above the content instead, so
+   the content gets the full width.
+   --------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .nav {
+    width: 100%;
+    flex-direction: row;
+    gap: 6px;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    /* Tabs scroll sideways rather than wrapping into a tall stack. */
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .card {
+    padding: 15px;
+    /* The attendance heatmap is far wider than any phone. Let the card scroll
+       sideways so the page itself doesn't. */
+    overflow-x: auto;
+  }
+
+  /* Paired form fields stack instead of shrinking to unusable widths. */
+  .row {
+    flex-wrap: wrap;
+  }
+
+  .topbar {
+    padding: 10px 14px;
+  }
+
+  /* Card headers, and the action groups inside them, put their controls on a
+     second line rather than running off the edge. Both levels are needed: the
+     components set display:flex inline, which CSS can't override, but they
+     leave flex-wrap alone. */
+  .card > div:first-child,
+  .card > div:first-child > div {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
