@@ -1,11 +1,25 @@
 /**
  * Payslip rendering for the monthly payroll email.
  *
- * The Muns raw email API takes a plain-text body only (no HTML), so the payslip
- * is laid out as fixed-width text: two short tables, earnings then deductions,
- * ending in net pay. Deliberately minimal — the columns here are the ones the
- * app actually stores, nothing invented for decoration.
+ * The Muns raw email API does not render HTML: real markup sent through it came
+ * back as literal escaped tags, confirming it treats the body as text to
+ * display, not a document to parse — it just escapes special characters and
+ * converts \n to <br>. So this is plain text, laid out as two short tables
+ * (earnings, deductions) ending in net pay.
+ *
+ * The consequence of that escape-and-wrap step: it drops the content into an
+ * HTML container, so ordinary runs of ASCII spaces collapse to one under
+ * normal HTML whitespace rules — which is exactly what broke the column
+ * alignment the first time this shipped. The fix is to pad with U+00A0
+ * (non-breaking space) instead of the regular space padEnd/padStart use by
+ * default; nbsp isn't whitespace as far as that collapsing rule is concerned,
+ * so the columns survive being displayed as HTML.
  */
+
+/** Padding character immune to HTML whitespace collapsing. Ordinary spaces
+ * inside words are unaffected — collapsing two of those into one is invisible
+ * anyway — only the padding run itself needs this. */
+const PAD = " ";
 
 /** Shown as the payslip header. The only place the company name is spelled out. */
 export const COMPANY_NAME = "Muns";
@@ -106,7 +120,7 @@ export function payslipSubject(period: string): string {
 }
 
 function row(label: string, amount: number): string {
-  return label.padEnd(LABEL_WIDTH) + money(amount).padStart(AMOUNT_WIDTH);
+  return label.padEnd(LABEL_WIDTH, PAD) + money(amount).padStart(AMOUNT_WIDTH, PAD);
 }
 
 function rule(): string {
@@ -114,7 +128,7 @@ function rule(): string {
 }
 
 function field(label: string, value: string): string {
-  return `${label.padEnd(16)}: ${value}`;
+  return `${label.padEnd(16, PAD)}: ${value}`;
 }
 
 export function payslipText(r: PayslipRow): string {
@@ -127,7 +141,7 @@ export function payslipText(r: PayslipRow): string {
     field("Designation", r.job_title || "—"),
     field("Worked Days", String(r.paid_days)),
     "",
-    "EARNINGS".padEnd(LABEL_WIDTH) + "AMOUNT".padStart(AMOUNT_WIDTH),
+    "EARNINGS".padEnd(LABEL_WIDTH, PAD) + "AMOUNT".padStart(AMOUNT_WIDTH, PAD),
     rule(),
     row("Basic Pay", r.base_salary),
   ];
@@ -137,7 +151,7 @@ export function payslipText(r: PayslipRow): string {
 
   lines.push(rule(), row("Total Earnings", totalEarnings), "");
 
-  lines.push("DEDUCTIONS".padEnd(LABEL_WIDTH) + "AMOUNT".padStart(AMOUNT_WIDTH), rule());
+  lines.push("DEDUCTIONS".padEnd(LABEL_WIDTH, PAD) + "AMOUNT".padStart(AMOUNT_WIDTH, PAD), rule());
   if (r.deductions > 0) {
     lines.push(row(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.deductions));
   } else {
@@ -151,164 +165,4 @@ export function payslipText(r: PayslipRow): string {
   lines.push("This is a system generated payslip.");
 
   return lines.join("\n");
-}
-
-/* -------------------------------------------------------------------------- */
-/* HTML payslip                                                               */
-/*                                                                            */
-/* Email clients are not browsers: no flexbox, no grid, and <style> blocks are */
-/* stripped by several of them. So this is table-based layout with every rule  */
-/* inlined, a 600px container, and web-safe fonts only — the standard shape    */
-/* that survives Gmail, Outlook and Apple Mail alike.                          */
-/* -------------------------------------------------------------------------- */
-
-
-const BRAND = "#2a78d6";
-const BRAND_DEEP = "#1b5fae";
-const EARN = "#0ca30c";
-const EARN_SOFT = "#eaf7ea";
-const DEDUCT = "#d03b3b";
-const DEDUCT_SOFT = "#fdeeee";
-const INK = "#0b0b0b";
-const MUTED = "#6b6b6b";
-const HAIRLINE = "#e6e8ec";
-const FONT = "-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
-
-/** Employee-supplied text lands in markup, so escape it rather than trust it. */
-function esc(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-/**
- * A stat chip in the header strip. Rendered as a table cell rather than a flex
- * child so it survives Outlook, which ignores display:flex entirely.
- */
-function headerStat(label: string, value: string): string {
-  return `<td style="padding:0 6px 0 0;">
-      <div style="font:600 10px ${FONT};letter-spacing:.11em;text-transform:uppercase;color:#ffffff;opacity:.72;">${esc(label)}</div>
-      <div style="font:700 14px ${FONT};color:#ffffff;padding-top:3px;">${esc(value)}</div>
-    </td>`;
-}
-
-/** A money line inside the earnings or deductions table. */
-function amountRow(label: string, amount: number, opts: { strong?: boolean; accent?: string } = {}): string {
-  const weight = opts.strong ? 700 : 400;
-  const border = opts.strong ? `border-top:1px solid ${HAIRLINE};` : "";
-  const color = opts.strong && opts.accent ? opts.accent : INK;
-  return `<tr>
-      <td style="${border}padding:10px 0;font:${weight} 13px ${FONT};color:${opts.strong ? INK : MUTED};">${esc(label)}</td>
-      <td align="right" style="${border}padding:10px 0;font:${weight} 14px ${FONT};color:${color};white-space:nowrap;">${money(amount)}</td>
-    </tr>`;
-}
-
-/**
- * A coloured section card — a tinted title bar over the rows. Two nested tables
- * because email clients won't reliably clip a background to a border-radius.
- */
-function section(title: string, accent: string, tint: string, rows: string): string {
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-       style="width:100%;border:1px solid ${HAIRLINE};border-radius:9px;overflow:hidden;">
-    <tr><td style="background:${tint};padding:9px 14px;border-bottom:1px solid ${HAIRLINE};">
-      <span style="font:700 11px ${FONT};letter-spacing:.1em;text-transform:uppercase;color:${accent};">${esc(title)}</span>
-    </td></tr>
-    <tr><td style="padding:2px 14px 8px;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
-    </td></tr>
-  </table>`;
-}
-
-export function payslipHtml(r: PayslipRow): string {
-  const totalEarnings = r.base_salary + r.reimbursements;
-  const settled = r.paid_at
-    ? `Paid on ${dateLabel(r.paid_at)}`
-    : `Due on ${dateLabel(payDueDate(r.period))}`;
-  // A paid slip gets a green badge, an unpaid one an amber "scheduled" badge.
-  const badgeBg = r.paid_at ? "#eaf7ea" : "#fdf4e0";
-  const badgeInk = r.paid_at ? "#0a7d0a" : "#8a6100";
-
-  const earnings =
-    [
-      amountRow("Basic Pay", r.base_salary),
-      // Skip a ₹0.00 line rather than print an empty row.
-      r.reimbursements > 0 ? amountRow("Reimbursements", r.reimbursements) : "",
-      amountRow("Total Earnings", totalEarnings, { strong: true, accent: EARN }),
-    ].join("");
-
-  const deductions =
-    [
-      r.deductions > 0
-        ? amountRow(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.deductions)
-        : `<tr><td colspan="2" style="padding:10px 0;font:400 13px ${FONT};color:${MUTED};">Nothing deducted this period.</td></tr>`,
-      amountRow("Total Deductions", r.deductions, { strong: true, accent: r.deductions > 0 ? DEDUCT : INK }),
-    ].join("");
-
-  // A fragment, not a full document: the API drops this into a body of its own,
-  // so <html>/<head> would only nest. Collapsed to one line on the way out —
-  // see the replace at the end.
-  const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;">
-  <tr><td align="center" style="padding:26px 12px;">
-
-    <!-- width="100%" + max-width, not width="600": the HTML attribute wins over
-         CSS, so a fixed 600 would force phones to scroll sideways. -->
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-           style="width:100%;max-width:600px;background:#ffffff;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(16,24,40,.08);">
-
-      <!-- Header: brand band with the cycle and the at-a-glance stats -->
-      <tr><td style="background:${BRAND};background-image:linear-gradient(135deg,${BRAND} 0%,${BRAND_DEEP} 100%);padding:24px 26px 20px;">
-        <div style="font:600 10px ${FONT};letter-spacing:.16em;text-transform:uppercase;color:#ffffff;opacity:.75;">${esc(COMPANY_NAME)}</div>
-        <div style="font:700 24px ${FONT};color:#ffffff;padding-top:5px;">Monthly Payslip</div>
-        <div style="font:400 13px ${FONT};color:#ffffff;opacity:.88;padding-top:4px;">${esc(cycleLabel(r.period))}</div>
-        <table role="presentation" cellpadding="0" cellspacing="0" style="padding-top:16px;">
-          <tr>
-            ${headerStat("Employee", r.employee_name)}
-            ${headerStat("Designation", r.job_title || "—")}
-            ${headerStat("Worked", `${r.paid_days} days`)}
-          </tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="padding:22px 26px 0;">
-        ${section("Earnings", EARN, EARN_SOFT, earnings)}
-      </td></tr>
-
-      <tr><td style="padding:14px 26px 0;">
-        ${section("Deductions", DEDUCT, DEDUCT_SOFT, deductions)}
-      </td></tr>
-
-      <!-- Net pay: the number people actually open the mail for -->
-      <tr><td style="padding:18px 26px 0;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-               style="width:100%;background:${BRAND};background-image:linear-gradient(135deg,${BRAND} 0%,${BRAND_DEEP} 100%);border-radius:11px;">
-          <tr>
-            <td style="padding:16px 18px;font:700 12px ${FONT};letter-spacing:.11em;text-transform:uppercase;color:#ffffff;opacity:.9;">Net Pay</td>
-            <td align="right" style="padding:16px 18px;font:700 24px ${FONT};color:#ffffff;white-space:nowrap;">${money(r.net_pay)}</td>
-          </tr>
-        </table>
-      </td></tr>
-
-      <tr><td style="padding:16px 26px 0;">
-        <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:${badgeBg};font:600 12px ${FONT};color:${badgeInk};">${esc(settled)}</span>
-      </td></tr>
-
-      <tr><td style="padding:18px 26px 24px;">
-        <div style="border-top:1px solid ${HAIRLINE};padding-top:12px;font:400 11px ${FONT};color:${MUTED};line-height:1.5;">
-          This is a system generated payslip — no signature required.<br>
-          Something look wrong? Reply to this email and HR will take a look.
-        </div>
-      </td></tr>
-
-    </table>
-
-  </td></tr>
-</table>`;
-
-  // Strip every newline. The API turns \n into <br> when it builds the message,
-  // which inside this markup would scatter stray breaks through the tables.
-  // Indentation becomes a single space, which is inert between tags and — unlike
-  // deleting it — can never weld two words together.
-  return html.replace(/\n\s*/g, " ").trim();
 }
