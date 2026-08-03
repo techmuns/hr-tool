@@ -4,7 +4,7 @@ import { requireAdmin } from "../auth";
 import { businessDaysInRange } from "../db";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payCycle, payslipSubject, payslipText } from "../payslip";
+import { payCycle, payslipHtml, payslipSubject, payslipText } from "../payslip";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -168,7 +168,10 @@ app.post("/admin/payroll/email", async (c) => {
       await sendRawEmail(c.env, {
         email: row.employee_email,
         subject: payslipSubject(period),
+        // Both bodies: HTML for clients that get it, plain text as the fallback
+        // if the API drops the field (see sendRawEmail).
         text: payslipText(row),
+        html: payslipHtml(row),
       });
       await c.env.DB.prepare("UPDATE payroll SET payslip_emailed_at = datetime('now') WHERE id = ?")
         .bind(row.id)
