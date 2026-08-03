@@ -1,4 +1,4 @@
-export type WorkMode = "wfh" | "in-office";
+export type WorkMode = "wfh" | "in-office" | "hybrid";
 export type EmployeeRole = "employee" | "admin";
 export type Tier = "employee" | "hr" | "founder";
 export type EmploymentType = "employee" | "freelancer";

@@ -294,6 +294,7 @@ export function EmployeePanel({
                   <select value={form.work_mode} onChange={(e) => set("work_mode", e.target.value as WorkMode)}>
                     <option value="in-office">In-office</option>
                     <option value="wfh">WFH / Online</option>
+                    <option value="hybrid">Hybrid</option>
                   </select>
                 </div>
                 <div className="field">
