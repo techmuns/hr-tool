@@ -246,11 +246,10 @@ export function payslipHtml(r: PayslipRow): string {
       amountRow("Total Deductions", r.deductions, { strong: true, accent: r.deductions > 0 ? DEDUCT : INK }),
     ].join("");
 
-  return `<!doctype html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Monthly Payslip</title></head>
-<body style="margin:0;padding:0;background:#eef1f6;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;">
+  // A fragment, not a full document: the API drops this into a body of its own,
+  // so <html>/<head> would only nest. Collapsed to one line on the way out —
+  // see the replace at the end.
+  const html = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eef1f6;">
   <tr><td align="center" style="padding:26px 12px;">
 
     <!-- width="100%" + max-width, not width="600": the HTML attribute wins over
@@ -305,7 +304,11 @@ export function payslipHtml(r: PayslipRow): string {
     </table>
 
   </td></tr>
-</table>
-</body>
-</html>`;
+</table>`;
+
+  // Strip every newline. The API turns \n into <br> when it builds the message,
+  // which inside this markup would scatter stray breaks through the tables.
+  // Indentation becomes a single space, which is inert between tags and — unlike
+  // deleting it — can never weld two words together.
+  return html.replace(/\n\s*/g, " ").trim();
 }
