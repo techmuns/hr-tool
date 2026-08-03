@@ -3,7 +3,7 @@ import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { formatDate, tenure } from "../date";
 import { formatINR } from "../money";
-import type { EmployeeWithTeam, WorkMode } from "../types";
+import type { Employee, WorkMode } from "../types";
 
 const WORK_MODE_LABEL: Record<WorkMode, string> = {
   "in-office": "In-office",
@@ -11,12 +11,12 @@ const WORK_MODE_LABEL: Record<WorkMode, string> = {
 };
 
 export function Profile() {
-  const [employee, setEmployee] = useState<EmployeeWithTeam | null>(null);
+  const [employee, setEmployee] = useState<Employee | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
-      .get<EmployeeWithTeam>("/me")
+      .get<Employee>("/me")
       .then(setEmployee)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, []);
@@ -48,21 +48,18 @@ export function Profile() {
           <input type="text" value={WORK_MODE_LABEL[employee.work_mode]} disabled />
         </div>
         <div className="field">
+          <label>Designation</label>
+          <input type="text" value={employee.job_title || "—"} disabled />
+        </div>
+      </div>
+      {/* Founders don't have a joining date — they were not hired in. */}
+      {employee.tier !== "founder" && (
+        <div className="field">
           <label>Date of joining</label>
           <input type="text" value={formatDate(employee.date_of_joining)} disabled />
           <p className="field-hint">{tenure(employee.date_of_joining)}</p>
         </div>
-      </div>
-      <div className="row">
-        <div className="field">
-          <label>Team</label>
-          <input type="text" value={employee.team_name || "No team"} disabled />
-        </div>
-        <div className="field">
-          <label>Role</label>
-          <input type="text" value={employee.job_title || "—"} disabled />
-        </div>
-      </div>
+      )}
       <div className="field">
         <label>Monthly salary (INR)</label>
         <input type="text" value={formatINR(employee.monthly_salary)} disabled />

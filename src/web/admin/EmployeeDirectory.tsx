@@ -5,7 +5,7 @@ import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { formatDate } from "../date";
 import { EmployeePanel } from "./EmployeePanel";
-import type { EmployeeWithTeam, Team, WorkMode } from "../types";
+import type { Employee, WorkMode } from "../types";
 
 const WORK_MODE_LABEL: Record<WorkMode, string> = {
   "in-office": "In-office",
@@ -13,22 +13,18 @@ const WORK_MODE_LABEL: Record<WorkMode, string> = {
 };
 
 export function EmployeeDirectory() {
-  const [employees, setEmployees] = useState<EmployeeWithTeam[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
 
   const [search, setSearch] = useState("");
-  const [teamFilter, setTeamFilter] = useState("");
   const [workModeFilter, setWorkModeFilter] = useState("");
   const [employmentFilter, setEmploymentFilter] = useState("");
 
   function load() {
-    Promise.all([api.get<EmployeeWithTeam[]>("/employees"), api.get<Team[]>("/admin/teams")])
-      .then(([emps, tms]) => {
-        setEmployees(emps);
-        setTeams(tms);
-      })
+    api
+      .get<Employee[]>("/employees")
+      .then(setEmployees)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }
 
@@ -37,16 +33,15 @@ export function EmployeeDirectory() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return employees.filter((e) => {
-      if (teamFilter && String(e.team_id ?? "") !== teamFilter) return false;
       if (workModeFilter && e.work_mode !== workModeFilter) return false;
       if (employmentFilter && e.employment_type !== employmentFilter) return false;
       if (q) {
-        const haystack = `${e.name} ${e.email} ${e.job_title} ${e.team_name ?? ""}`.toLowerCase();
+        const haystack = `${e.name} ${e.email} ${e.job_title}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
     });
-  }, [employees, search, teamFilter, workModeFilter, employmentFilter]);
+  }, [employees, search, workModeFilter, employmentFilter]);
 
   return (
     <Card
@@ -68,17 +63,6 @@ export function EmployeeDirectory() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-        <div className="field">
-          <label>Team</label>
-          <select value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
-            <option value="">All teams</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
         </div>
         <div className="field">
           <label>Work mode</label>
@@ -124,7 +108,7 @@ export function EmployeeDirectory() {
               <td>{emp.email || <span className="muted">—</span>}</td>
               <td>{emp.job_title || <span className="muted">—</span>}</td>
               <td>{WORK_MODE_LABEL[emp.work_mode]}</td>
-              <td>{formatDate(emp.date_of_joining)}</td>
+              <td>{emp.tier === "founder" ? <span className="muted">—</span> : formatDate(emp.date_of_joining)}</td>
             </tr>
           ))}
           {filtered.length === 0 && (

@@ -3,7 +3,7 @@ import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths, todayISODate } from "../date";
 import { scrollToToday } from "../scrollToToday";
-import type { Attendance, AttendanceStatus, EmployeeWithTeam } from "../types";
+import type { Attendance, AttendanceStatus, Employee } from "../types";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
@@ -23,7 +23,7 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
 
   useEffect(() => {
     api
-      .get<EmployeeWithTeam>("/me")
+      .get<Employee>("/me")
       .then((emp) => setDateOfJoining(emp.date_of_joining))
       .catch(() => {});
   }, []);

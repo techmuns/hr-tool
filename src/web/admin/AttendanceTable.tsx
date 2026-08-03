@@ -14,14 +14,13 @@ import {
 } from "../date";
 import { scrollToToday } from "../scrollToToday";
 import { confirmDialog } from "../confirm";
-import type { AttendanceStatus, AttendanceWithName, Employee, EmployeeWithTeam } from "../types";
+import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
 
-type SortKey = "name" | "team" | "work_mode";
+type SortKey = "name" | "work_mode";
 
 const SORT_LABEL: Record<SortKey, string> = {
   name: "Name",
-  team: "Team",
   work_mode: "Work mode",
 };
 
@@ -54,7 +53,7 @@ interface Editing {
 
 export function AttendanceTable() {
   const [month, setMonth] = useState(currentMonth());
-  const [employees, setEmployees] = useState<EmployeeWithTeam[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceWithName[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +68,7 @@ export function AttendanceTable() {
 
   const load = useCallback(() => {
     return Promise.all([
-      api.get<EmployeeWithTeam[]>("/employees"),
+      api.get<Employee[]>("/employees"),
       api.get<AttendanceWithName[]>(`/admin/attendance?month=${month}`),
     ])
       .then(([emps, att]) => {
@@ -113,10 +112,7 @@ export function AttendanceTable() {
   const sortedEmployees = useMemo(() => {
     const list = [...employees];
     list.sort((a, b) => {
-      if (sortBy === "team") {
-        const cmp = (a.team_name ?? "~").localeCompare(b.team_name ?? "~");
-        if (cmp !== 0) return cmp;
-      } else if (sortBy === "work_mode") {
+      if (sortBy === "work_mode") {
         const cmp = a.work_mode.localeCompare(b.work_mode);
         if (cmp !== 0) return cmp;
       }
@@ -139,7 +135,7 @@ export function AttendanceTable() {
     setEditing({ employee, day, cell, x: Math.max(12, x), y: Math.max(12, y) });
   }
 
-  async function removeFromAttendance(employee: EmployeeWithTeam) {
+  async function removeFromAttendance(employee: Employee) {
     const ok = await confirmDialog(
       `Remove ${employee.name} from the attendance list? Their records are kept; re-add them from their employee panel.`,
       { confirmLabel: "Remove", danger: true },
@@ -227,11 +223,7 @@ export function AttendanceTable() {
               const dayMap = byEmployee.get(emp.id);
               const present = presentCount.get(emp.id) ?? 0;
               const groupCtx =
-                sortBy === "team"
-                  ? emp.team_name ?? "No team"
-                  : sortBy === "work_mode"
-                    ? WORK_MODE_LABEL[emp.work_mode] ?? emp.work_mode
-                    : null;
+                sortBy === "work_mode" ? WORK_MODE_LABEL[emp.work_mode] ?? emp.work_mode : null;
               const subtitle = `${present} / ${WORKING_DAYS_PER_MONTH}${groupCtx ? ` · ${groupCtx}` : ""}`;
               return (
                 <tr key={emp.id} className="hm-row-band">

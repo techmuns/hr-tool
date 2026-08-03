@@ -1,6 +1,6 @@
 import { getSession } from "./session";
 import { currentMonth } from "./date";
-import type { Attendance, EmployeeWithTeam, LeaveRequest, Reimbursement } from "./types";
+import type { Attendance, Employee, LeaveRequest, Reimbursement } from "./types";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const session = getSession();
@@ -125,7 +125,7 @@ export const api = {
 // endpoint — behaviour identical to not having bootstrap at all.
 
 interface BootstrapResponse {
-  me: EmployeeWithTeam;
+  me: Employee;
   attendance: Attendance[];
   leave: LeaveRequest[];
   reimbursements: Reimbursement[];
