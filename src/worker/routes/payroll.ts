@@ -168,10 +168,12 @@ app.post("/admin/payroll/email", async (c) => {
       await sendRawEmail(c.env, {
         email: row.employee_email,
         subject: payslipSubject(period),
-        // Both bodies: HTML for clients that get it, plain text as the fallback
-        // if the API drops the field (see sendRawEmail).
-        text: payslipText(row),
+        // `text` is the field the API renders, and it renders it as HTML — so
+        // the markup goes there. payslipText is only reached if that request is
+        // rejected outright (see sendRawEmail).
+        text: payslipHtml(row),
         html: payslipHtml(row),
+        textFallback: payslipText(row),
       });
       await c.env.DB.prepare("UPDATE payroll SET payslip_emailed_at = datetime('now') WHERE id = ?")
         .bind(row.id)
