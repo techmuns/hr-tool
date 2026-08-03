@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { formatDate } from "./date";
+import { cycleLabel } from "../worker/payslip";
 import type { PayrollWithName } from "./types";
 
 // jsPDF's built-in Helvetica font only supports WinAnsi (Windows-1252), which
@@ -33,7 +34,8 @@ export function exportPayrollPdf(period: string, rows: PayrollWithName[]) {
   const pageHeight = doc.internal.pageSize.getHeight();
 
   doc.setFontSize(14);
-  doc.text(`Payroll — ${period}`, MARGIN, 18);
+  // Label the cycle the period actually bills (11th–10th), not the bare month.
+  doc.text(`Payroll — ${cycleLabel(period)}`, MARGIN, 18);
   doc.setFontSize(9);
   doc.setTextColor(120);
   doc.text(`Generated ${formatDate(new Date().toISOString())} IST`, MARGIN, 24);

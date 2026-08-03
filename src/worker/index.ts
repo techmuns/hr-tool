@@ -26,6 +26,20 @@ app.route("/api", roleRoutes);
 
 app.get("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
+/**
+ * Anything that escapes a route handler would otherwise reach the browser as a
+ * bare "Internal Server Error" with no clue what broke — which is exactly what a
+ * D1 table missing because remote migrations were never applied looks like.
+ * Surface the real message instead: this is an internal tool, and being able to
+ * read the failure is worth far more than hiding it.
+ */
+app.onError((err, c) => {
+  console.error("Unhandled error:", err);
+  const message = err instanceof Error ? err.message : "Unexpected server error";
+  if (c.req.path.startsWith("/api/")) return c.json({ error: message }, 500);
+  return c.text(message, 500);
+});
+
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
 export default app;

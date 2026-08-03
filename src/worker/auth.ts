@@ -4,6 +4,13 @@ import type { Employee } from "./types";
 export type Bindings = {
   DB: D1Database;
   ASSETS: Fetcher;
+  /**
+   * Reimbursement bill attachments — too large for D1. See ./bills.ts.
+   * Paused: no R2 bucket bound right now (commented out in wrangler.jsonc),
+   * so this is undefined at runtime despite the type. bills.ts checks for
+   * that before touching it.
+   */
+  BILLS: R2Bucket | undefined;
   /** Bearer token for the Muns raw email API. Set via `wrangler secret put MUNS_TOKEN`. */
   MUNS_TOKEN: string;
 };

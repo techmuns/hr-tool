@@ -1034,6 +1034,60 @@ thead .hm-name {
   color: var(--muted);
 }
 
+/* Payment status strip above the payroll table: cycle state on the left,
+   the mark-paid and email-payslips actions on the right. */
+.payroll-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 13px;
+}
+
+.payroll-result {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+.payroll-result p {
+  margin: 2px 0;
+}
+
+/* Text-only button that reads as a link — used for opening a bill attachment
+   and for clearing a picked file. */
+.link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.link-btn:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.link-btn:disabled {
+  color: var(--muted);
+  cursor: default;
+  text-decoration: none;
+}
+
+/* Keep the native file input from overflowing the narrow drawer column. */
+.field input[type="file"] {
+  max-width: 100%;
+  padding: 7px 8px;
+  font-size: 13px;
+}
+
 .inline-form {
   margin-top: 10px;
   padding: 12px;
@@ -1514,5 +1568,132 @@ thead .hm-name {
   .clock-action .ripple,
   .clock-body > * {
     animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phones
+   ---------------------------------------------------------------------------
+   The clock card is a two-column layout — a fixed 168px face beside a text
+   column — which needs a good 400px to breathe. Below that the face is wider
+   than the space left for it, so it overflows its card. On a phone the card
+   stacks into a single centred column instead, and the face scales with the
+   viewport rather than staying pinned at 168px.
+   --------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .clock-card {
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    text-align: center;
+  }
+
+  /* aspect-ratio keeps it square while the width tracks the viewport; the SVG
+     scales itself because it is sized by viewBox, not fixed pixels. */
+  .clock-face-wrap {
+    width: min(168px, 58vw);
+    height: auto;
+    aspect-ratio: 1 / 1;
+  }
+
+  .clock-body {
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .clock-digital {
+    justify-content: center;
+    font-size: 44px;
+  }
+
+  /* align-self: flex-start on the pill would pin it left of a centred column */
+  .clock-status {
+    align-self: center;
+  }
+
+  .clock-stamps {
+    justify-content: center;
+    gap: 30px;
+  }
+
+  .clock-stamp {
+    align-items: center;
+  }
+
+  /* Full-width so it is a comfortable thumb target. */
+  .clock-action {
+    width: 100%;
+  }
+
+  .clock-page {
+    padding: 16px 14px 28px;
+    align-items: flex-start;
+  }
+
+  .clock-page-inner {
+    padding-top: 8px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Phones — app shell
+   ---------------------------------------------------------------------------
+   The dashboard is a fixed 200px sidebar beside the content. On a 375px phone
+   that leaves ~175px for everything else, which squeezed cards down to ~127px
+   and pushed the clock face and the attendance grid off-screen. Below the
+   breakpoint the nav becomes a horizontal strip above the content instead, so
+   the content gets the full width.
+   --------------------------------------------------------------------------- */
+@media (max-width: 560px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .nav {
+    width: 100%;
+    flex-direction: row;
+    gap: 6px;
+    padding: 8px 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    /* Tabs scroll sideways rather than wrapping into a tall stack. */
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .card {
+    padding: 15px;
+    /* The attendance heatmap is far wider than any phone. Let the card scroll
+       sideways so the page itself doesn't. */
+    overflow-x: auto;
+  }
+
+  /* Paired form fields stack instead of shrinking to unusable widths. */
+  .row {
+    flex-wrap: wrap;
+  }
+
+  .topbar {
+    padding: 10px 14px;
+  }
+
+  /* Card headers, and the action groups inside them, put their controls on a
+     second line rather than running off the edge. Both levels are needed: the
+     components set display:flex inline, which CSS can't override, but they
+     leave flex-wrap alone. */
+  .card > div:first-child,
+  .card > div:first-child > div {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }

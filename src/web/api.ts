@@ -5,7 +5,9 @@ import type { Attendance, EmployeeWithTeam, LeaveRequest, Reimbursement } from "
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const session = getSession();
   const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
+  // FormData supplies its own multipart Content-Type, including the boundary —
+  // overriding it here would make the body unparseable on the other end.
+  if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
   if (session) {
     headers.set("x-user-id", String(session.employeeId));
     headers.set("x-role", session.role);
@@ -82,10 +84,30 @@ function cachedGet<T>(path: string, opts: GetOptions = {}): Promise<T> {
 async function mutate<T>(path: string, method: string, body?: unknown): Promise<T> {
   const data = await request<T>(path, {
     method,
-    body: body ? JSON.stringify(body) : undefined,
+    body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
   });
   clearApiCache(); // a write may invalidate any cached read
   return data;
+}
+
+/**
+ * Reimbursement bills need the session headers, so they can't be plain <a href>
+ * links — fetch the bytes here and let the caller hand the blob to the browser.
+ */
+export async function fetchBill(reimbursementId: number): Promise<Blob> {
+  const session = getSession();
+  const headers = new Headers();
+  if (session) {
+    headers.set("x-user-id", String(session.employeeId));
+    headers.set("x-role", session.role);
+  }
+  const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { headers });
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    const message = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;
+    throw new Error(message || "Failed to open bill");
+  }
+  return res.blob();
 }
 
 export const api = {

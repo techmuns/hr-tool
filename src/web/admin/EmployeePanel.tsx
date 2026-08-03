@@ -8,6 +8,7 @@ import { getSession } from "../session";
 import { confirmDialog } from "../confirm";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
+import { BILLS_ENABLED, BillLink, BillPicker } from "../components/Bill";
 import type {
   Employee,
   EmployeeDetail,
@@ -86,6 +87,8 @@ export function EmployeePanel({
   const [addingReimbursement, setAddingReimbursement] = useState(false);
   const [reimAmount, setReimAmount] = useState("");
   const [reimNote, setReimNote] = useState("");
+  const [reimBill, setReimBill] = useState<File | null>(null);
+  const [reimPickerKey, setReimPickerKey] = useState(0);
   const [reimBusy, setReimBusy] = useState(false);
   const [removingReimId, setRemovingReimId] = useState<number | null>(null);
 
@@ -233,12 +236,16 @@ export function EmployeePanel({
     setReimBusy(true);
     setError(null);
     try {
-      await api.post(`/admin/employees/${target}/reimbursements`, {
-        amount: Math.round(amountRupees * 100),
-        note: reimNote.trim(),
-      });
+      // Multipart rather than JSON so the bill can ride along with the fields.
+      const form = new FormData();
+      form.set("amount", String(Math.round(amountRupees * 100)));
+      form.set("note", reimNote.trim());
+      if (reimBill) form.set("bill", reimBill);
+      await api.post(`/admin/employees/${target}/reimbursements`, form);
       setReimAmount("");
       setReimNote("");
+      setReimBill(null);
+      setReimPickerKey((k) => k + 1); // remount BillPicker so the file input clears
       setAddingReimbursement(false);
       loadDetail();
     } catch (err) {
@@ -426,6 +433,14 @@ export function EmployeePanel({
                           />
                         </div>
                       </div>
+                      {BILLS_ENABLED && (
+                        <BillPicker
+                          key={reimPickerKey}
+                          file={reimBill}
+                          onPick={setReimBill}
+                          disabled={reimBusy}
+                        />
+                      )}
                       <div className="inline-form-actions">
                         <Button onClick={() => setAddingReimbursement(false)} disabled={reimBusy}>
                           Cancel
@@ -447,6 +462,7 @@ export function EmployeePanel({
                           <th>Date</th>
                           <th>Note</th>
                           <th>Amount</th>
+                          {BILLS_ENABLED && <th>Bill</th>}
                           <th></th>
                         </tr>
                       </thead>
@@ -456,6 +472,11 @@ export function EmployeePanel({
                             <td>{formatDate(r.created_at)}</td>
                             <td>{r.note || <span className="muted">—</span>}</td>
                             <td>{formatINR(r.amount)}</td>
+                            {BILLS_ENABLED && (
+                              <td>
+                                <BillLink reimbursement={r} />
+                              </td>
+                            )}
                             <td>
                               <button
                                 type="button"

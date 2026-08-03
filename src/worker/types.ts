@@ -54,6 +54,11 @@ export interface Reimbursement {
   amount: number;
   note: string;
   created_at: string;
+  /** R2 object key for the attached bill; null when none was uploaded. */
+  bill_key: string | null;
+  bill_name: string | null;
+  bill_type: string | null;
+  bill_size: number | null;
 }
 
 export interface Attendance {
@@ -115,8 +120,14 @@ export interface Payroll {
   reimbursements: number;
   net_pay: number;
   generated_at: string;
+  /** When HR marked this cycle's dues paid; null while still outstanding. */
+  paid_at: string | null;
+  /** When this row's payslip was last emailed; null if never sent. */
+  payslip_emailed_at: string | null;
 }
 
 export interface PayrollWithName extends Payroll {
   employee_name: string;
+  /** Needed by the UI to know who can actually be mailed a payslip. */
+  employee_email: string;
 }

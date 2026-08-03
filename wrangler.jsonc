@@ -21,6 +21,19 @@
       "migrations_dir": "migrations"
     }
   ],
+  // Reimbursement bill attachments — paused for now (needs an R2 bucket, which
+  // isn't set up on this account yet). D1 caps a row at 2 MB, under the 3 MB
+  // bills are meant to allow, so the files were going to R2 with D1 keeping
+  // only the object key. The client-side upload UI is commented out to match
+  // (see ReimbursementRequest.tsx / EmployeePanel.tsx), so nothing calls this
+  // binding right now. To resume: `npx wrangler r2 bucket create hr-tool-bills`,
+  // uncomment this block, and uncomment the BillPicker/BillLink usages.
+  // "r2_buckets": [
+  //   {
+  //     "binding": "BILLS",
+  //     "bucket_name": "hr-tool-bills"
+  //   }
+  // ],
   "observability": {
     "enabled": true
   }
