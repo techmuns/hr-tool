@@ -104,6 +104,7 @@ export async function readReimbursementInput(
     return { error: "amount must be a positive number" };
   }
   if (bill) {
+    if (!c.env.BILLS) return { error: "Bill uploads are temporarily unavailable" };
     const problem = billError(bill);
     if (problem) return { error: problem };
   }
@@ -135,6 +136,7 @@ function safeName(name: string): string {
 }
 
 export async function putBill(c: Context<AppEnv>, employeeId: number, bill: File): Promise<StoredBill> {
+  if (!c.env.BILLS) throw new Error("BILLS bucket is not bound");
   const type = resolveBillType(bill);
   const key = `reimbursements/${employeeId}/${crypto.randomUUID()}.${ALLOWED_BILL_TYPES[type]}`;
   await c.env.BILLS.put(key, await bill.arrayBuffer(), { httpMetadata: { contentType: type } });
@@ -146,6 +148,7 @@ export async function putBill(c: Context<AppEnv>, employeeId: number, bill: File
  * request would leave the caller unable to delete the reimbursement at all.
  */
 export async function deleteBills(c: Context<AppEnv>, keys: (string | null)[]): Promise<void> {
+  if (!c.env.BILLS) return;
   const present = keys.filter((k): k is string => Boolean(k));
   if (present.length === 0) return;
   await c.env.BILLS.delete(present).catch(() => {});

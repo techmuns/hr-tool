@@ -8,7 +8,7 @@ import { getSession } from "../session";
 import { confirmDialog } from "../confirm";
 import { TeamManager } from "./TeamManager";
 import { RoleManager } from "./RoleManager";
-import { BillLink, BillPicker } from "../components/Bill";
+import { BILLS_ENABLED, BillLink, BillPicker } from "../components/Bill";
 import type {
   Employee,
   EmployeeDetail,
@@ -433,12 +433,14 @@ export function EmployeePanel({
                           />
                         </div>
                       </div>
-                      <BillPicker
-                        key={reimPickerKey}
-                        file={reimBill}
-                        onPick={setReimBill}
-                        disabled={reimBusy}
-                      />
+                      {BILLS_ENABLED && (
+                        <BillPicker
+                          key={reimPickerKey}
+                          file={reimBill}
+                          onPick={setReimBill}
+                          disabled={reimBusy}
+                        />
+                      )}
                       <div className="inline-form-actions">
                         <Button onClick={() => setAddingReimbursement(false)} disabled={reimBusy}>
                           Cancel
@@ -460,7 +462,7 @@ export function EmployeePanel({
                           <th>Date</th>
                           <th>Note</th>
                           <th>Amount</th>
-                          <th>Bill</th>
+                          {BILLS_ENABLED && <th>Bill</th>}
                           <th></th>
                         </tr>
                       </thead>
@@ -470,9 +472,11 @@ export function EmployeePanel({
                             <td>{formatDate(r.created_at)}</td>
                             <td>{r.note || <span className="muted">—</span>}</td>
                             <td>{formatINR(r.amount)}</td>
-                            <td>
-                              <BillLink reimbursement={r} />
-                            </td>
+                            {BILLS_ENABLED && (
+                              <td>
+                                <BillLink reimbursement={r} />
+                              </td>
+                            )}
                             <td>
                               <button
                                 type="button"

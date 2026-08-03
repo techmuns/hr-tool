@@ -4,6 +4,14 @@ import { BILL_ACCEPT, MAX_BILL_BYTES, billError, formatBytes } from "../../worke
 import type { Reimbursement } from "../types";
 
 /**
+ * Single switch for the whole bill-attachment feature. Paused for now — it
+ * needs an R2 bucket that isn't set up on this account yet (see the comment
+ * on r2_buckets in wrangler.jsonc). Flip to true once that bucket exists;
+ * ReimbursementRequest.tsx and EmployeePanel.tsx both gate on this constant.
+ */
+export const BILLS_ENABLED = false;
+
+/**
  * File picker for a reimbursement bill. Validation runs against the same rules
  * the Worker enforces (src/worker/bills.ts), so an oversized or unsupported file
  * is rejected here instead of after a pointless 3 MB upload.
