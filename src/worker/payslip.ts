@@ -38,30 +38,32 @@ function dateLabel(iso: string): string {
 }
 
 export interface PayCycle {
-  /** First day covered, inclusive — the 11th of the period's own month. */
+  /** First day covered, inclusive — the 11th of the month before the period. */
   start: string;
-  /** Last day covered, inclusive — the 10th of the following month. */
+  /** Last day covered, inclusive — the 10th of the period's own month. */
   end: string;
   /** The day the money goes out: the 11th, right after the cycle closes. */
   payDate: string;
 }
 
 /**
- * The pay cycle a "YYYY-MM" period stands for. Billing runs 11th-to-10th, not
- * calendar months: period 2026-08 covers 11 Aug – 10 Sep 2026 and is paid on
- * 11 Sep. Everything that has to line up with a cycle — the unpaid-leave window,
- * the reimbursement window, the payslip header — derives from this one function.
+ * The pay cycle a "YYYY-MM" period stands for. Billing runs 11th-to-10th and in
+ * arrears, so a period is named for the month it is PAID in, not the month it
+ * covers: period 2026-08 covers 11 Jul – 10 Aug 2026 and is paid on 11 Aug.
+ * Everything that has to line up with a cycle — the unpaid-leave window, the
+ * reimbursement window, the payslip header — derives from this one function.
  */
 export function payCycle(period: string): PayCycle {
   const [year, month] = period.split("-").map(Number);
   if (!year || !month) return { start: "", end: "", payDate: "" };
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  // `month` is 1-based and the Date argument is 0-based, so `month` on its own
-  // already means "the following month".
+  // `month` is 1-based and the Date argument is 0-based, so `month - 1` is the
+  // period's own month and `month - 2` the one before it. Date normalises the
+  // negative index for January, rolling back into the previous year.
   return {
-    start: iso(new Date(Date.UTC(year, month - 1, 11))),
-    end: iso(new Date(Date.UTC(year, month, 10))),
-    payDate: iso(new Date(Date.UTC(year, month, 11))),
+    start: iso(new Date(Date.UTC(year, month - 2, 11))),
+    end: iso(new Date(Date.UTC(year, month - 1, 10))),
+    payDate: iso(new Date(Date.UTC(year, month - 1, 11))),
   };
 }
 
@@ -70,24 +72,25 @@ export function payDueDate(period: string): string {
   return payCycle(period).payDate;
 }
 
-/** "2026-08" -> "11 Aug – 10 Sep 2026", the span the payslip actually covers. */
+/** "2026-08" -> "11 Jul – 10 Aug 2026", the span the payslip actually covers. */
 export function cycleLabel(period: string): string {
   const { start, end } = payCycle(period);
   if (!start || !end) return period;
-  const short = (iso: string) =>
+  const day = (iso: string, withYear: boolean) =>
     new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-IN", {
       timeZone: "UTC",
       day: "numeric",
       month: "short",
+      ...(withYear ? { year: "numeric" as const } : {}),
     });
-  return `${short(start)} – ${short(end)} ${end.slice(0, 4)}`;
+  // A cycle spanning new year (11 Dec – 10 Jan) needs both years to be readable.
+  const sameYear = start.slice(0, 4) === end.slice(0, 4);
+  return `${day(start, !sameYear)} – ${day(end, true)}`;
 }
 
 export interface PayslipRow {
   employee_name: string;
   job_title: string;
-  team_name: string | null;
-  date_of_joining: string;
   period: string;
   paid_days: number;
   unpaid_days: number;
@@ -99,7 +102,7 @@ export interface PayslipRow {
 }
 
 export function payslipSubject(period: string): string {
-  return `Payslip — ${cycleLabel(period)}`;
+  return `Monthly Payslip — ${cycleLabel(period)}`;
 }
 
 function row(label: string, amount: number): string {
@@ -117,13 +120,11 @@ function field(label: string, value: string): string {
 export function payslipText(r: PayslipRow): string {
   const totalEarnings = r.base_salary + r.reimbursements;
   const lines: string[] = [
-    `${COMPANY_NAME} — PAYSLIP`,
+    `${COMPANY_NAME} — MONTHLY PAYSLIP`,
     "",
     field("Pay Period", cycleLabel(r.period)),
     field("Employee Name", r.employee_name),
     field("Designation", r.job_title || "—"),
-    field("Department", r.team_name || "—"),
-    field("Date of Joining", dateLabel(r.date_of_joining)),
     field("Worked Days", String(r.paid_days)),
     "",
     "EARNINGS".padEnd(LABEL_WIDTH) + "AMOUNT".padStart(AMOUNT_WIDTH),

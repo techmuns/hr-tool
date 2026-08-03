@@ -147,11 +147,9 @@ app.post("/admin/payroll/email", async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT p.id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
             p.deductions, p.net_pay, p.paid_at,
-            e.name AS employee_name, e.email AS employee_email, e.job_title, e.date_of_joining,
-            t.name AS team_name
+            e.name AS employee_name, e.email AS employee_email, e.job_title
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
-     LEFT JOIN teams t ON t.id = e.team_id
      WHERE p.period = ? AND p.employee_id IN (${ids.map(() => "?").join(",")})
      ORDER BY e.name ASC`
   )
