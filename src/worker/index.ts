@@ -14,7 +14,13 @@ import appVersionRoutes from "./routes/appVersion";
 const app = new Hono<AppEnv>();
 
 app.route("/api", authRoutes);
+// Public, no-auth routes must be mounted BEFORE the sub-apps below that do
+// `app.use("*", requireEmployee)`. A mounted sub-app's wildcard middleware also
+// matches /api/* paths that belong to later sub-apps, so mounting a public
+// route after them lets requireEmployee short-circuit it with 401 before its
+// handler ever runs. extensionRoutes and appVersionRoutes are both public.
 app.route("/api", extensionRoutes);
+app.route("/api", appVersionRoutes);
 app.route("/api", employeeRoutes);
 app.route("/api", attendanceRoutes);
 app.route("/api", leaveRoutes);
@@ -22,7 +28,6 @@ app.route("/api", feedbackRoutes);
 app.route("/api", chatRoutes);
 app.route("/api", payrollRoutes);
 app.route("/api", roleRoutes);
-app.route("/api", appVersionRoutes);
 
 app.get("/api/*", (c) => c.json({ error: "Not found" }, 404));
 
