@@ -23,10 +23,16 @@
  */
 
 /** Shown as the payslip header. The only place the company name is spelled out. */
-export const COMPANY_NAME = "Muns";
+export const COMPANY_NAME = "Munshot";
 
-const ACCENT = "#2a78d6"; // matches --primary in the app's own theme
-const ACCENT_SOFT = "#eaf2fc";
+// Matches the Munshot mark: a gold "M" on near-black navy. Two golds, not one —
+// GOLD reads clearly on the dark header, but that same value is too light to
+// pass as body text on the white card below, so GOLD_DEEP stands in there.
+const NAVY = "#11141f";
+const GOLD = "#e8c26a";
+const GOLD_SOFT_ON_DARK = "rgba(232, 194, 106, 0.16)";
+const GOLD_DEEP = "#8a5f0a"; // darker than GOLD — needs to clear 4.5:1 on white/GOLD_TINT for the 12px net-pay label
+const GOLD_TINT = "#faf1de";
 const INK = "#0b0b0b";
 const MUTED = "#52514e";
 const BORDER = "#e5e5e2";
@@ -216,15 +222,15 @@ export function payslipHtml(r: PayslipRow): string {
       <td align="center" style="padding:24px 12px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;">
           <tr>
-            <td style="background:${ACCENT};padding:24px;border-radius:12px 12px 0 0;">
+            <td style="background:${NAVY};padding:24px;border-radius:12px 12px 0 0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td valign="middle">
-                    <div style="color:#ffffff;font-size:21px;font-weight:bold;">${COMPANY_NAME}</div>
-                    <div style="color:#dceafc;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;">Monthly Payslip · ${cycleLabel(r.period)}</div>
+                    <div style="color:${GOLD};font-size:21px;font-weight:bold;">${COMPANY_NAME}</div>
+                    <div style="color:#c9bfa3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;">Monthly Payslip · ${cycleLabel(r.period)}</div>
                   </td>
                   <td valign="middle" align="right">
-                    <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,0.2);color:#ffffff;font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">${badge}</span>
+                    <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:${GOLD_SOFT_ON_DARK};border:1px solid rgba(232,194,106,0.4);color:${GOLD};font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">${badge}</span>
                   </td>
                 </tr>
               </table>
@@ -257,10 +263,10 @@ export function payslipHtml(r: PayslipRow): string {
           </tr>
           <tr>
             <td style="padding:20px 24px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${ACCENT_SOFT};border-radius:8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${GOLD_TINT};border-radius:8px;">
                 <tr>
-                  <td style="padding:16px 20px;font-size:12px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;color:${ACCENT};">Net Pay</td>
-                  <td style="padding:16px 20px;font-size:22px;font-weight:bold;color:${ACCENT};text-align:right;">${money(r.net_pay)}</td>
+                  <td style="padding:16px 20px;font-size:12px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;color:${GOLD_DEEP};">Net Pay</td>
+                  <td style="padding:16px 20px;font-size:22px;font-weight:bold;color:${GOLD_DEEP};text-align:right;">${money(r.net_pay)}</td>
                 </tr>
               </table>
             </td>
