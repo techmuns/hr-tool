@@ -81,6 +81,19 @@ export function payCycle(period: string): PayCycle {
   };
 }
 
+/**
+ * The inverse of payCycle: which period a given date is billed under. A cycle
+ * runs 11th-to-10th, so the 10th and earlier still belong to the month's own
+ * period while the 11th onwards has rolled into the next one.
+ */
+export function periodForDate(iso: string): string {
+  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+  if (!year || !month || !day) return iso.slice(0, 7);
+  // Date normalises a 13th month into January of the following year.
+  const d = new Date(Date.UTC(year, month - 1 + (day >= 11 ? 1 : 0), 1));
+  return d.toISOString().slice(0, 7);
+}
+
 /** The date a period's salaries are due — the 11th that closes the cycle. */
 export function payDueDate(period: string): string {
   return payCycle(period).payDate;

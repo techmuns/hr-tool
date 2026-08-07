@@ -3,77 +3,24 @@ import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payCycle, payslipSubject, payslipText } from "../payslip";
-import {
-  approvedReimbursementsByEmployee,
-  computePay,
-  manualDeductionsByEmployee,
-  unpaidLeaveDaysByEmployee,
-} from "../payrollCalc";
-import type { Employee, PayrollWithName } from "../types";
+import { payslipSubject, payslipText } from "../payslip";
+import { syncPayroll } from "../payrollCalc";
+import type { PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
 
 app.use("*", requireAdmin);
 
+const PERIOD_RE = /^\d{4}-\d{2}$/;
+
 app.get("/admin/payroll", async (c) => {
   const period = c.req.query("period");
-  if (!period) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+  if (!period || !PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
-  if (c.req.query("generate") === "1") {
-    // Billing runs 11th-to-10th, not calendar months: period 2026-08 covers
-    // 11 Aug – 10 Sep and is paid on 11 Sep. Both windows below key off this.
-    const cycle = payCycle(period);
-
-    // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
-    const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>();
-
-    // Three company-wide lookups up front rather than per person inside the
-    // loop. Reimbursements only count once HR has approved them.
-    const [unpaidLeaveDays, approvedReimbursements, manualDeductions] = await Promise.all([
-      unpaidLeaveDaysByEmployee(c.env.DB, cycle),
-      approvedReimbursementsByEmployee(c.env.DB, cycle),
-      manualDeductionsByEmployee(c.env.DB, period),
-    ]);
-
-    for (const employee of employees.results) {
-      const pay = computePay({
-        monthlySalary: employee.monthly_salary,
-        unpaidDays: unpaidLeaveDays.get(employee.id) ?? 0,
-        reimbursements: approvedReimbursements.get(employee.id) ?? 0,
-        otherDeductions: manualDeductions.get(employee.id) ?? 0,
-      });
-
-      // Re-generating recomputes the amounts but deliberately leaves paid_at and
-      // payslip_emailed_at alone: a re-run shouldn't silently forget that this
-      // cycle was already paid out or that payslips already went to people.
-      await c.env.DB.prepare(
-        `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions,
-                              leave_deductions, other_deductions, reimbursements, net_pay)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT (employee_id, period)
-         DO UPDATE SET base_salary = excluded.base_salary, paid_days = excluded.paid_days,
-                       unpaid_days = excluded.unpaid_days, deductions = excluded.deductions,
-                       leave_deductions = excluded.leave_deductions,
-                       other_deductions = excluded.other_deductions,
-                       reimbursements = excluded.reimbursements, net_pay = excluded.net_pay,
-                       generated_at = datetime('now')`
-      )
-        .bind(
-          employee.id,
-          period,
-          employee.monthly_salary,
-          pay.paidDays,
-          pay.unpaidDays,
-          pay.deductions,
-          pay.leaveDeductions,
-          pay.otherDeductions,
-          pay.reimbursements,
-          pay.netPay,
-        )
-        .run();
-    }
-  }
+  // Recomputed on every read, so the figures always reflect the approvals,
+  // deductions and leave behind them. Cycles already marked paid are left
+  // alone — see syncPayroll.
+  await syncPayroll(c.env.DB, period);
 
   const rows = await c.env.DB.prepare(
     `SELECT p.*, e.name AS employee_name, e.email AS employee_email FROM payroll p
@@ -86,8 +33,6 @@ app.get("/admin/payroll", async (c) => {
 
   return c.json(rows.results);
 });
-
-const PERIOD_RE = /^\d{4}-\d{2}$/;
 
 /**
  * Mark a whole cycle's dues paid (or undo it). Payroll runs in arrears — a
@@ -102,6 +47,11 @@ app.post("/admin/payroll/paid", async (c) => {
   const period = typeof body.period === "string" ? body.period : "";
   if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
   const paid = body.paid !== false; // default to marking paid
+
+  // Settle against current figures, not whatever was last read: marking paid is
+  // the point after which the row stops tracking its inputs, so it had better
+  // be up to date at that moment.
+  if (paid) await syncPayroll(c.env.DB, period);
 
   const result = await c.env.DB.prepare(
     `UPDATE payroll SET paid_at = ${paid ? "datetime('now')" : "NULL"} WHERE period = ?`
@@ -141,6 +91,11 @@ app.post("/admin/payroll/email", async (c) => {
   if (ids.length > MAX_EMAILS_PER_REQUEST) {
     return c.json({ error: `Select at most ${MAX_EMAILS_PER_REQUEST} people per send` }, 400);
   }
+
+  // A payslip is the most public thing this app produces — emailing a figure
+  // that a just-made approval has already moved past is the one staleness that
+  // cannot be fixed by reloading. No-op on a paid cycle, which stays frozen.
+  await syncPayroll(c.env.DB, period);
 
   const rows = await c.env.DB.prepare(
     `SELECT p.id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,

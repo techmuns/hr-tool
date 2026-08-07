@@ -5,9 +5,9 @@ import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { BILLS_ENABLED, BillLink } from "../components/Bill";
 import { confirmDialog } from "../confirm";
-import { currentMonth, formatDate } from "../date";
+import { currentMonth, formatDate, todayISODate } from "../date";
 import { formatINR } from "../money";
-import { cycleLabel } from "../../worker/payslip";
+import { cycleLabel, periodForDate } from "../../worker/payslip";
 import type { CycleAdjustments, Employee, ReimbursementStatus } from "../types";
 
 /**
@@ -26,8 +26,12 @@ export function Adjustments() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [regenBusy, setRegenBusy] = useState(false);
-  const [regenDone, setRegenDone] = useState(false);
+
+  const [addingReim, setAddingReim] = useState(false);
+  const [reimEmployee, setReimEmployee] = useState("");
+  const [reimAmount, setReimAmount] = useState("");
+  const [reimNote, setReimNote] = useState("");
+  const [reimBusy, setReimBusy] = useState(false);
 
   // Rejection reasons, kept per pending row so typing in one doesn't touch another.
   const [notes, setNotes] = useState<Record<number, string>>({});
@@ -48,12 +52,7 @@ export function Adjustments() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(() => {
-    // The "payroll re-generated" note belongs to the cycle it was generated
-    // for, so switching months clears it.
-    setRegenDone(false);
-    load();
-  }, [period]);
+  useEffect(load, [period]);
 
   useEffect(() => {
     api.get<Employee[]>("/employees").then(setEmployees).catch(() => {});
@@ -61,6 +60,10 @@ export function Adjustments() {
 
   // Deductions are a payroll concept, so only people payroll actually runs for.
   const payrollEmployees = useMemo(() => employees.filter((e) => e.on_payroll !== 0), [employees]);
+
+  // Which cycle a reimbursement filed right now would fall into — not
+  // necessarily the one being viewed, since the month picker moves freely.
+  const todaysPeriod = periodForDate(todayISODate());
 
   const approvedTotal = useMemo(
     () => (data?.reimbursements ?? []).filter((r) => r.status === "approved").reduce((s, r) => s + r.amount, 0),
@@ -127,29 +130,38 @@ export function Adjustments() {
   }
 
   /**
-   * Re-run payroll for this cycle so the approvals and deductions above land on
-   * the actual payslip. Deliberately a button rather than something that fires
-   * on every approval: re-generating a cycle whose dues are already marked paid
-   * changes a settled amount, so it stays an explicit, confirmed act.
+   * File a reimbursement on someone's behalf. Goes to the same endpoint the
+   * employee drawer uses, which marks it approved on the spot — HR entering it
+   * IS the approval, so routing it into the queue above for HR to then approve
+   * to themselves would be a pointless round trip.
    */
-  async function regenerate() {
-    if (data?.paid) {
-      const ok = await confirmDialog(
-        `The ${cycleLabel(period)} cycle is already marked paid. Re-generating will recompute what everyone is owed — continue?`,
-        { confirmLabel: "Re-generate", danger: true },
-      );
-      if (!ok) return;
+  async function addReimbursement() {
+    const employeeId = Number(reimEmployee);
+    const rupees = parseFloat(reimAmount);
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      setError("Pick who the reimbursement is for");
+      return;
     }
-    setRegenBusy(true);
+    if (!rupees || rupees <= 0) {
+      setError("Enter a reimbursement amount greater than 0");
+      return;
+    }
+    setReimBusy(true);
     setError(null);
     try {
-      await api.get(`/admin/payroll?period=${period}&generate=1`, { force: true });
-      setRegenDone(true);
-      load(); // picks up the now-generated (and possibly newly-unpaid) cycle state
+      await api.post(`/admin/employees/${employeeId}/reimbursements`, {
+        amount: Math.round(rupees * 100),
+        note: reimNote.trim(),
+      });
+      setReimEmployee("");
+      setReimAmount("");
+      setReimNote("");
+      setAddingReim(false);
+      load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to re-generate payroll");
+      setError(err instanceof Error ? err.message : "Failed to add reimbursement");
     } finally {
-      setRegenBusy(false);
+      setReimBusy(false);
     }
   }
 
@@ -190,34 +202,71 @@ export function Adjustments() {
             {` · reimbursements ${formatINR(approvedTotal)} · deductions ${formatINR(
               deductionTotal + leaveTotal,
             )}`}
-            {data?.paid
-              ? " · dues already marked paid"
-              : data?.generated
-                ? " · payroll generated, not yet paid"
-                : " · payroll not generated yet"}
+            {data?.paid ? " · dues marked paid" : " · dues outstanding"}
           </span>
         </div>
-        <Button variant="primary" disabled={loading || regenBusy} onClick={regenerate}>
-          {regenBusy ? "Re-generating…" : "Apply to payslips"}
-        </Button>
       </div>
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        {regenDone ? (
+        {data?.paid ? (
           <>
-            Payroll for {cycleLabel(period)} re-generated — the payslips now carry these amounts.
+            This cycle&rsquo;s dues are marked paid, so its payslip figures are frozen at what was paid out. Changes
+            here no longer move them — reopen the cycle with <strong>Mark unpaid</strong> on the Payroll tab if it
+            genuinely has to change.
           </>
         ) : (
-          <>
-            Approvals and deductions here are the inputs payroll reads. They only reach a payslip once payroll is
-            generated again — <strong>Apply to payslips</strong> does that for this cycle
-            {data?.paid ? ", but the cycle is already marked paid, so it will change a settled amount." : "."}
-          </>
+          <>Payroll recalculates from these as you go — approvals and deductions hit the payslip straight away.</>
         )}
       </p>
 
       {loading && <p className="muted">Loading…</p>}
 
       <h3 className="drawer-section">Reimbursements awaiting approval ({pending.length})</h3>
+      <Button onClick={() => setAddingReim((v) => !v)} disabled={reimBusy}>
+        + Add reimbursement
+      </Button>
+      {addingReim && (
+        <div className="inline-form">
+          <div className="row">
+            <div className="field">
+              <label>Employee</label>
+              <select value={reimEmployee} onChange={(e) => setReimEmployee(e.target.value)}>
+                <option value="">Select…</option>
+                {payrollEmployees.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>Amount (INR)</label>
+              <input type="number" step="0.01" value={reimAmount} onChange={(e) => setReimAmount(e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Note</label>
+            <input
+              type="text"
+              placeholder="Travel, meals, equipment, etc."
+              value={reimNote}
+              onChange={(e) => setReimNote(e.target.value)}
+            />
+          </div>
+          <p className="field-hint">
+            Approved on the spot, since you&rsquo;re the one adding it. A reimbursement is dated by when it is filed,
+            so this one lands in the {cycleLabel(todaysPeriod)} cycle
+            {todaysPeriod === period ? " — the one shown above." : `, not the ${cycleLabel(period)} cycle shown above.`}
+          </p>
+          <div className="inline-form-actions">
+            <Button onClick={() => setAddingReim(false)} disabled={reimBusy}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={addReimbursement} disabled={reimBusy}>
+              {reimBusy ? "Adding…" : "Add"}
+            </Button>
+          </div>
+        </div>
+      )}
       <table>
         <thead>
           <tr>

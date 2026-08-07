@@ -110,10 +110,11 @@ export interface CycleAdjustments {
   reimbursements: ReimbursementWithName[];
   deductions: DeductionWithName[];
   leave: LeaveDeduction[];
-  /** True once the cycle's dues are marked paid — edits then need a re-generate. */
+  /**
+   * True once the cycle's dues are marked paid. Payroll figures track their
+   * inputs automatically right up until that point, then freeze.
+   */
   paid: boolean;
-  /** True when payroll has been generated for this period at all. */
-  generated: boolean;
 }
 
 export interface Attendance {

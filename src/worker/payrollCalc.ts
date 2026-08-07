@@ -11,7 +11,9 @@
  */
 
 import { businessDaysInRange } from "./db";
+import { payCycle } from "./payslip";
 import type { PayCycle } from "./payslip";
+import type { Employee } from "./types";
 
 /** Company standard: every month bills the same number of working days. */
 export const WORKING_DAYS_PER_MONTH = 24;
@@ -119,4 +121,74 @@ export function computePay({ monthlySalary, unpaidDays, reimbursements, otherDed
     reimbursements,
     netPay: monthlySalary - deductions + reimbursements,
   };
+}
+
+/**
+ * Bring a period's payroll rows in line with the inputs behind them.
+ *
+ * Called on every read of a period rather than from a "Generate" button: the
+ * amounts are a pure function of salary, unpaid leave, approved reimbursements
+ * and booked deductions, so there is no state in which a stored row is more
+ * correct than a freshly computed one, and no reason to make someone press
+ * something to find that out.
+ *
+ * The one exception is a cycle whose dues are already marked paid. What was
+ * paid out is a fact, not a derivation — recomputing it would rewrite history
+ * every time a late reimbursement was approved, and the payslip already sitting
+ * in someone's inbox would stop matching their row. Those rows are left exactly
+ * as they were paid; the WHERE on the upsert is what pins them. Reopen a cycle
+ * with "Mark unpaid" if it genuinely needs to move again.
+ */
+export async function syncPayroll(db: D1Database, period: string): Promise<void> {
+  // Billing runs 11th-to-10th, not calendar months: period 2026-08 covers
+  // 11 Jul – 10 Aug and is paid on 11 Aug. Every window below keys off this.
+  const cycle = payCycle(period);
+
+  // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
+  const [employees, unpaidLeaveDays, approvedReimbursements, manualDeductions] = await Promise.all([
+    db.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>(),
+    unpaidLeaveDaysByEmployee(db, cycle),
+    approvedReimbursementsByEmployee(db, cycle),
+    manualDeductionsByEmployee(db, period),
+  ]);
+
+  const upsert = db.prepare(
+    `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions,
+                          leave_deductions, other_deductions, reimbursements, net_pay)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (employee_id, period)
+     DO UPDATE SET base_salary = excluded.base_salary, paid_days = excluded.paid_days,
+                   unpaid_days = excluded.unpaid_days, deductions = excluded.deductions,
+                   leave_deductions = excluded.leave_deductions,
+                   other_deductions = excluded.other_deductions,
+                   reimbursements = excluded.reimbursements, net_pay = excluded.net_pay,
+                   generated_at = datetime('now')
+     -- Settled rows stay as they were paid. payslip_emailed_at is never touched
+     -- either way: re-syncing must not forget that a payslip already went out.
+     WHERE payroll.paid_at IS NULL`
+  );
+
+  const statements = (employees.results ?? []).map((employee) => {
+    const pay = computePay({
+      monthlySalary: employee.monthly_salary,
+      unpaidDays: unpaidLeaveDays.get(employee.id) ?? 0,
+      reimbursements: approvedReimbursements.get(employee.id) ?? 0,
+      otherDeductions: manualDeductions.get(employee.id) ?? 0,
+    });
+    return upsert.bind(
+      employee.id,
+      period,
+      employee.monthly_salary,
+      pay.paidDays,
+      pay.unpaidDays,
+      pay.deductions,
+      pay.leaveDeductions,
+      pay.otherDeductions,
+      pay.reimbursements,
+      pay.netPay,
+    );
+  });
+
+  // One round trip for the whole company instead of a write per person.
+  if (statements.length > 0) await db.batch(statements);
 }

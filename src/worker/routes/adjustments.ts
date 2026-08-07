@@ -106,7 +106,6 @@ app.get("/admin/adjustments", async (c) => {
     leave,
     // "Paid" only when the whole cycle is — a part-marked period is still open.
     paid: (payrollState?.generated ?? 0) > 0 && payrollState?.generated === payrollState?.paid,
-    generated: (payrollState?.generated ?? 0) > 0,
   };
   return c.json(body);
 });

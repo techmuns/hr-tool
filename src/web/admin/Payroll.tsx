@@ -27,11 +27,14 @@ export function Payroll() {
   // owned by the user's checkbox clicks until the period changes.
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  function load(generate = false) {
+  // The server recomputes the period on every read, so this is both "load" and
+  // what used to be "generate". `force` skips the GET cache — otherwise a fresh
+  // approval could be masked by a 20s-old response.
+  function load() {
     setLoading(true);
     setError(null);
     api
-      .get<PayrollWithName[]>(`/admin/payroll?period=${period}${generate ? "&generate=1" : ""}`)
+      .get<PayrollWithName[]>(`/admin/payroll?period=${period}`, { force: true })
       .then((data) => {
         setRows(data);
         // Default to everyone we can actually reach; people with no address on
@@ -133,8 +136,8 @@ export function Payroll() {
       actions={
         <div style={{ display: "flex", gap: 8 }}>
           <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }} />
-          <Button variant="primary" disabled={busy} onClick={() => load(true)}>
-            Generate
+          <Button disabled={busy} onClick={() => load()} title="Re-read this cycle">
+            Refresh
           </Button>
           <Button disabled={rows.length === 0} onClick={() => exportPayrollPdf(period, rows)}>
             Export PDF
@@ -156,6 +159,9 @@ export function Payroll() {
                 ? ` · marked paid ${formatDate(paidOn)}`
                 : ` · due ${formatDate(payDueDate(period))}`}
               {!allPaid && paidCount > 0 && ` · ${paidCount} of ${rows.length} already marked`}
+              {/* Says which of the two states these figures are in, since that
+                  decides whether an approval made now would still move them. */}
+              {allPaid ? " · figures frozen as paid" : " · figures track approvals and deductions live"}
             </span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -273,7 +279,7 @@ export function Payroll() {
           {rows.length === 0 && (
             <tr>
               <td colSpan={9} className="muted">
-                No payroll for this period yet. Click Generate.
+                {loading ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>
           )}
