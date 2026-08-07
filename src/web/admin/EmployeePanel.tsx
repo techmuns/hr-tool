@@ -411,6 +411,9 @@ export function EmployeePanel({
                           disabled={reimBusy}
                         />
                       )}
+                      <p className="field-hint">
+                        Added by HR, so it counts as approved straight away — no trip through the Adjustments queue.
+                      </p>
                       <div className="inline-form-actions">
                         <Button onClick={() => setAddingReimbursement(false)} disabled={reimBusy}>
                           Cancel
@@ -432,6 +435,7 @@ export function EmployeePanel({
                           <th>Date</th>
                           <th>Note</th>
                           <th>Amount</th>
+                          <th>Status</th>
                           {BILLS_ENABLED && <th>Bill</th>}
                           <th></th>
                         </tr>
@@ -442,6 +446,9 @@ export function EmployeePanel({
                             <td>{formatDate(r.created_at)}</td>
                             <td>{r.note || <span className="muted">—</span>}</td>
                             <td>{formatINR(r.amount)}</td>
+                            <td>
+                              <Tag value={r.status} />
+                            </td>
                             {BILLS_ENABLED && (
                               <td>
                                 <BillLink reimbursement={r} />

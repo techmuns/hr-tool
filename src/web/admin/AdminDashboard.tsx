@@ -3,6 +3,7 @@ import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
+import { Adjustments } from "./Adjustments";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
@@ -22,6 +23,7 @@ export function AdminDashboard() {
     { key: "attendance", label: "Attendance" },
     { key: "employees", label: "Employees" },
     { key: "payroll", label: "Payroll" },
+    { key: "adjustments", label: "Adjustments" },
     ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
     { key: "chat", label: "Chat" },
   ];
@@ -50,6 +52,7 @@ export function AdminDashboard() {
           {view === "attendance" && <AttendanceTable />}
           {view === "employees" && <EmployeeDirectory />}
           {view === "payroll" && <Payroll />}
+          {view === "adjustments" && <Adjustments />}
           {isFounder && view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}
         </div>

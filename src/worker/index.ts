@@ -7,6 +7,7 @@ import leaveRoutes from "./routes/leave";
 import feedbackRoutes from "./routes/feedback";
 import chatRoutes from "./routes/chat";
 import payrollRoutes from "./routes/payroll";
+import adjustmentRoutes from "./routes/adjustments";
 import roleRoutes from "./routes/roles";
 import extensionRoutes from "./routes/extension";
 import appVersionRoutes from "./routes/appVersion";
@@ -27,6 +28,7 @@ app.route("/api", leaveRoutes);
 app.route("/api", feedbackRoutes);
 app.route("/api", chatRoutes);
 app.route("/api", payrollRoutes);
+app.route("/api", adjustmentRoutes);
 app.route("/api", roleRoutes);
 
 app.get("/api/*", (c) => c.json({ error: "Not found" }, 404));

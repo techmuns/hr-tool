@@ -1,17 +1,20 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
-import { businessDaysInRange } from "../db";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
 import { payCycle, payslipSubject, payslipText } from "../payslip";
+import {
+  approvedReimbursementsByEmployee,
+  computePay,
+  manualDeductionsByEmployee,
+  unpaidLeaveDaysByEmployee,
+} from "../payrollCalc";
 import type { Employee, PayrollWithName } from "../types";
 
 const app = new Hono<AppEnv>();
 
 app.use("*", requireAdmin);
-
-const WORKING_DAYS_PER_MONTH = 24;
 
 app.get("/admin/payroll", async (c) => {
   const period = c.req.query("period");
@@ -25,54 +28,49 @@ app.get("/admin/payroll", async (c) => {
     // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
     const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>();
 
+    // Three company-wide lookups up front rather than per person inside the
+    // loop. Reimbursements only count once HR has approved them.
+    const [unpaidLeaveDays, approvedReimbursements, manualDeductions] = await Promise.all([
+      unpaidLeaveDaysByEmployee(c.env.DB, cycle),
+      approvedReimbursementsByEmployee(c.env.DB, cycle),
+      manualDeductionsByEmployee(c.env.DB, period),
+    ]);
+
     for (const employee of employees.results) {
-      // Not clocking in has no effect on pay — deductions come only from leave.
-
-      // Unpaid leave days that fall inside the cycle (leave requests store
-      // ranges, so expand them to business days and count those in-cycle).
-      const unpaidLeaves = await c.env.DB.prepare(
-        `SELECT start_date, end_date FROM leave_requests
-         WHERE employee_id = ? AND leave_type = 'unpaid' AND status = 'approved'`
-      )
-        .bind(employee.id)
-        .all<{ start_date: string; end_date: string }>();
-      let unpaidLeaveDays = 0;
-      for (const l of unpaidLeaves.results) {
-        unpaidLeaveDays += businessDaysInRange(l.start_date, l.end_date).filter(
-          (d) => d >= cycle.start && d <= cycle.end,
-        ).length;
-      }
-
-      // Reimbursements submitted during the cycle, added on top of salary.
-      // created_at is "YYYY-MM-DD HH:MM:SS", so a plain string range works: the
-      // upper bound is the pay date itself, which excludes it and everything after.
-      const reimbursementRow = await c.env.DB.prepare(
-        `SELECT COALESCE(SUM(amount), 0) AS total FROM reimbursements
-         WHERE employee_id = ? AND created_at >= ? AND created_at < ?`
-      )
-        .bind(employee.id, cycle.start, cycle.payDate)
-        .first<{ total: number }>();
-      const reimbursements = reimbursementRow?.total ?? 0;
-
-      const unpaidDays = unpaidLeaveDays;
-      const paidDays = Math.max(WORKING_DAYS_PER_MONTH - unpaidDays, 0);
-      const dailyRate = employee.monthly_salary / WORKING_DAYS_PER_MONTH;
-      const deductions = Math.round(dailyRate * unpaidDays);
-      const netPay = employee.monthly_salary - deductions + reimbursements;
+      const pay = computePay({
+        monthlySalary: employee.monthly_salary,
+        unpaidDays: unpaidLeaveDays.get(employee.id) ?? 0,
+        reimbursements: approvedReimbursements.get(employee.id) ?? 0,
+        otherDeductions: manualDeductions.get(employee.id) ?? 0,
+      });
 
       // Re-generating recomputes the amounts but deliberately leaves paid_at and
       // payslip_emailed_at alone: a re-run shouldn't silently forget that this
       // cycle was already paid out or that payslips already went to people.
       await c.env.DB.prepare(
-        `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions, reimbursements, net_pay)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions,
+                              leave_deductions, other_deductions, reimbursements, net_pay)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (employee_id, period)
          DO UPDATE SET base_salary = excluded.base_salary, paid_days = excluded.paid_days,
                        unpaid_days = excluded.unpaid_days, deductions = excluded.deductions,
+                       leave_deductions = excluded.leave_deductions,
+                       other_deductions = excluded.other_deductions,
                        reimbursements = excluded.reimbursements, net_pay = excluded.net_pay,
                        generated_at = datetime('now')`
       )
-        .bind(employee.id, period, employee.monthly_salary, paidDays, unpaidDays, deductions, reimbursements, netPay)
+        .bind(
+          employee.id,
+          period,
+          employee.monthly_salary,
+          pay.paidDays,
+          pay.unpaidDays,
+          pay.deductions,
+          pay.leaveDeductions,
+          pay.otherDeductions,
+          pay.reimbursements,
+          pay.netPay,
+        )
         .run();
     }
   }
@@ -146,7 +144,7 @@ app.post("/admin/payroll/email", async (c) => {
 
   const rows = await c.env.DB.prepare(
     `SELECT p.id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
-            p.deductions, p.net_pay, p.paid_at,
+            p.deductions, p.leave_deductions, p.other_deductions, p.net_pay, p.paid_at,
             e.name AS employee_name, e.email AS employee_email, e.job_title
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id

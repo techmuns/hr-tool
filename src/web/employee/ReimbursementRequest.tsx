@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
+import { Tag } from "../components/ui/Tag";
 import { BILLS_ENABLED, BillLink, BillPicker } from "../components/Bill";
 import { formatDate } from "../date";
 import { formatINR } from "../money";
@@ -44,7 +45,7 @@ export function ReimbursementRequest() {
       setNote("");
       setBill(null);
       setPickerKey((k) => k + 1); // remount BillPicker so the file input clears
-      setConfirmation("Request submitted.");
+      setConfirmation("Request submitted — waiting on HR approval.");
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit request");
@@ -56,7 +57,8 @@ export function ReimbursementRequest() {
   return (
     <Card title="Request Reimbursement">
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Submit an expense for HR to review — travel, meals, equipment, etc.
+        Submit an expense for HR to review — travel, meals, equipment, etc. It only reaches a payslip once HR approves
+        it.
       </p>
       <form onSubmit={submit}>
         <div className="row">
@@ -91,6 +93,7 @@ export function ReimbursementRequest() {
             <th>Date</th>
             <th>Note</th>
             <th>Amount</th>
+            <th>Status</th>
             {BILLS_ENABLED && <th>Bill</th>}
           </tr>
         </thead>
@@ -98,8 +101,15 @@ export function ReimbursementRequest() {
           {requests.map((r) => (
             <tr key={r.id}>
               <td>{formatDate(r.created_at)}</td>
-              <td>{r.note || <span className="muted">—</span>}</td>
+              <td>
+                {r.note || <span className="muted">—</span>}
+                {/* HR's reason, when they left one — usually why it was rejected. */}
+                {r.decision_note && <div className="muted" style={{ fontSize: 12 }}>“{r.decision_note}”</div>}
+              </td>
               <td>{formatINR(r.amount)}</td>
+              <td>
+                <Tag value={r.status} />
+              </td>
               {BILLS_ENABLED && (
                 <td>
                   <BillLink reimbursement={r} />
@@ -109,7 +119,7 @@ export function ReimbursementRequest() {
           ))}
           {requests.length === 0 && (
             <tr>
-              <td colSpan={BILLS_ENABLED ? 4 : 3} className="muted">
+              <td colSpan={BILLS_ENABLED ? 5 : 4} className="muted">
                 No reimbursement requests yet.
               </td>
             </tr>

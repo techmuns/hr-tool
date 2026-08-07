@@ -5,6 +5,8 @@ export type EmploymentType = "employee" | "freelancer";
 export type AttendanceStatus = "present" | "absent" | "leave";
 export type LeaveType = "paid" | "unpaid";
 export type LeaveStatus = "pending" | "approved" | "rejected";
+/** Where a reimbursement sits in the HR approval queue. */
+export type ReimbursementStatus = "pending" | "approved" | "rejected";
 export type SenderRole = "employee" | "admin";
 
 export interface Employee {
@@ -54,6 +56,64 @@ export interface Reimbursement {
   bill_name: string | null;
   bill_type: string | null;
   bill_size: number | null;
+  /** Only 'approved' rows are counted into a cycle's pay. */
+  status: ReimbursementStatus;
+  /** When HR decided; null while still pending. */
+  decided_at: string | null;
+  decided_by: number | null;
+  /** Optional reason HR typed alongside the decision — mainly for rejections. */
+  decision_note: string;
+}
+
+export interface ReimbursementWithName extends Reimbursement {
+  employee_name: string;
+  /** Who approved or rejected it; null while pending (or if they've since left). */
+  decided_by_name: string | null;
+}
+
+/** A deduction HR books by hand against a cycle, on top of any leave deduction. */
+export interface Deduction {
+  id: number;
+  employee_id: number;
+  /** The payroll period ("YYYY-MM") this is charged to. */
+  period: string;
+  amount: number;
+  note: string;
+  created_at: string;
+  created_by: number | null;
+}
+
+export interface DeductionWithName extends Deduction {
+  employee_name: string;
+  created_by_name: string | null;
+}
+
+/** What unpaid leave costs one employee in a cycle — derived, never stored here. */
+export interface LeaveDeduction {
+  employee_id: number;
+  employee_name: string;
+  monthly_salary: number;
+  unpaid_days: number;
+  amount: number;
+}
+
+/**
+ * Everything the Adjustments tab shows for one cycle. `pending` is deliberately
+ * not date-filtered: a request waiting on HR needs deciding whenever it was
+ * filed, and hiding it because it predates the selected cycle would strand it.
+ */
+export interface CycleAdjustments {
+  period: string;
+  cycle: { start: string; end: string; payDate: string };
+  pending: ReimbursementWithName[];
+  /** Decided reimbursements filed inside this cycle. */
+  reimbursements: ReimbursementWithName[];
+  deductions: DeductionWithName[];
+  leave: LeaveDeduction[];
+  /** True once the cycle's dues are marked paid — edits then need a re-generate. */
+  paid: boolean;
+  /** True when payroll has been generated for this period at all. */
+  generated: boolean;
 }
 
 export interface Attendance {
@@ -111,7 +171,12 @@ export interface Payroll {
   base_salary: number;
   paid_days: number;
   unpaid_days: number;
+  /** Total netted off the salary — the sum of the two breakdown columns below. */
   deductions: number;
+  /** The unpaid-leave share of `deductions`. */
+  leave_deductions: number;
+  /** The manually-booked share of `deductions`. */
+  other_deductions: number;
   reimbursements: number;
   net_pay: number;
   generated_at: string;

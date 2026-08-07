@@ -110,7 +110,10 @@ export interface PayslipRow {
   unpaid_days: number;
   base_salary: number;
   reimbursements: number;
+  /** Total deductions; `leave_deductions + other_deductions` add up to this. */
   deductions: number;
+  leave_deductions: number;
+  other_deductions: number;
   net_pay: number;
   paid_at: string | null;
 }
@@ -152,11 +155,14 @@ export function payslipText(r: PayslipRow): string {
   lines.push(rule(), row("Total Earnings", totalEarnings), "");
 
   lines.push("DEDUCTIONS".padEnd(LABEL_WIDTH, PAD) + "AMOUNT".padStart(AMOUNT_WIDTH, PAD), rule());
-  if (r.deductions > 0) {
-    lines.push(row(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.deductions));
-  } else {
-    lines.push("No deductions this period.");
+  // Leave and manually-booked deductions are listed apart: seeing one lump sum
+  // labelled "unpaid leave" when half of it was an advance recovery is exactly
+  // the sort of thing that turns into a payroll query.
+  if (r.leave_deductions > 0) {
+    lines.push(row(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.leave_deductions));
   }
+  if (r.other_deductions > 0) lines.push(row("Other Deductions", r.other_deductions));
+  if (r.deductions <= 0) lines.push("No deductions this period.");
   lines.push(rule(), row("Total Deductions", r.deductions), "");
 
   lines.push(rule(), row("NET PAY", r.net_pay), rule(), "");

@@ -6,6 +6,7 @@ export type {
   AttendanceStatus,
   LeaveType,
   LeaveStatus,
+  ReimbursementStatus,
   SenderRole,
   Employee,
   EmployeeDetail,
@@ -20,4 +21,9 @@ export type {
   Payroll,
   PayrollWithName,
   Reimbursement,
+  ReimbursementWithName,
+  Deduction,
+  DeductionWithName,
+  LeaveDeduction,
+  CycleAdjustments,
 } from "../worker/types";

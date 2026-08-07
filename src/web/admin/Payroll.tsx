@@ -235,7 +235,11 @@ export function Payroll() {
               <td>{formatINR(row.base_salary)}</td>
               <td>{formatINR(row.reimbursements)}</td>
               <td>{row.paid_days}</td>
-              <td>{formatINR(row.deductions)}</td>
+              <td
+                title={`Unpaid leave ${formatINR(row.leave_deductions)} · manual ${formatINR(row.other_deductions)}`}
+              >
+                {formatINR(row.deductions)}
+              </td>
               <td>{formatINR(row.net_pay)}</td>
               <td>
                 <button

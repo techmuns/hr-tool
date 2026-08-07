@@ -23,17 +23,24 @@ app.use("*", requireEmployee);
  * Shared by the employee-filed and HR-filed routes: upload the bill (if any),
  * then write the row. If the insert fails the freshly uploaded object is
  * removed again, so a failed request never leaves an orphan in R2.
+ *
+ * `approvedBy` is the admin booking the expense on someone's behalf, or null
+ * when an employee files their own — those land pending and wait for HR in the
+ * Adjustments tab. An admin adding a reimbursement from the employee panel IS
+ * the approval, so re-queueing it for themselves would be busywork.
  */
 async function insertReimbursement(
   c: Context<AppEnv>,
   employeeId: number,
   input: ReimbursementInput,
+  approvedBy: number | null,
 ): Promise<Reimbursement | null> {
   const bill = input.bill ? await putBill(c, employeeId, input.bill) : null;
   try {
     const result = await c.env.DB.prepare(
-      `INSERT INTO reimbursements (employee_id, amount, note, bill_key, bill_name, bill_type, bill_size)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO reimbursements (employee_id, amount, note, bill_key, bill_name, bill_type, bill_size,
+                                   status, decided_at, decided_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${approvedBy === null ? "NULL" : "datetime('now')"}, ?)`
     )
       .bind(
         employeeId,
@@ -43,6 +50,8 @@ async function insertReimbursement(
         bill?.name ?? null,
         bill?.type ?? null,
         bill?.size ?? null,
+        approvedBy === null ? "pending" : "approved",
+        approvedBy,
       )
       .run();
 
@@ -108,7 +117,9 @@ app.post("/reimbursements", async (c) => {
   const input = await readReimbursementInput(c);
   if ("error" in input) return c.json({ error: input.error }, 400);
 
-  return c.json(await insertReimbursement(c, employee.id, input), 201);
+  // Filed by the employee, so it goes into the approval queue rather than
+  // straight onto their next payslip.
+  return c.json(await insertReimbursement(c, employee.id, input, null), 201);
 });
 
 /**
@@ -182,7 +193,7 @@ app.post("/admin/employees/:id/reimbursements", requireAdmin, async (c) => {
   const input = await readReimbursementInput(c);
   if ("error" in input) return c.json({ error: input.error }, 400);
 
-  return c.json(await insertReimbursement(c, id, input), 201);
+  return c.json(await insertReimbursement(c, id, input, c.get("employee").id), 201);
 });
 
 app.delete("/admin/reimbursements/:id", requireAdmin, async (c) => {
