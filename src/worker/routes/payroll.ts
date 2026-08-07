@@ -3,7 +3,7 @@ import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payslipSubject, payslipText } from "../payslip";
+import { payslipHtml, payslipSubject } from "../payslip";
 import { syncPayroll } from "../payrollCalc";
 import type { PayrollWithName } from "../types";
 
@@ -121,7 +121,7 @@ app.post("/admin/payroll/email", async (c) => {
       await sendRawEmail(c.env, {
         email: row.employee_email,
         subject: payslipSubject(period),
-        text: payslipText(row),
+        html: payslipHtml(row),
       });
       await c.env.DB.prepare("UPDATE payroll SET payslip_emailed_at = datetime('now') WHERE id = ?")
         .bind(row.id)
