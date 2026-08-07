@@ -22,6 +22,8 @@
  * clients that strip <style> would drop that breakpoint too.
  */
 
+import { MUNSHOT_LOGO_DATA_URI } from "./munshotLogo";
+
 /** Shown as the payslip header. The only place the company name is spelled out. */
 export const COMPANY_NAME = "Munshot";
 
@@ -225,12 +227,19 @@ export function payslipHtml(r: PayslipRow): string {
             <td style="background:${NAVY};padding:24px;border-radius:12px 12px 0 0;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 <tr>
-                  <td valign="middle">
+                  <td width="44" valign="top" style="padding-right:12px;">
+                    <img src="${MUNSHOT_LOGO_DATA_URI}" width="36" height="36" alt="Munshot" style="display:block;">
+                  </td>
+                  <td valign="top">
                     <div style="color:${GOLD};font-size:21px;font-weight:bold;">${COMPANY_NAME}</div>
                     <div style="color:#c9bfa3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;">Monthly Payslip · ${cycleLabel(r.period)}</div>
-                  </td>
-                  <td valign="middle" align="right">
-                    <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:${GOLD_SOFT_ON_DARK};border:1px solid rgba(232,194,106,0.4);color:${GOLD};font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">${badge}</span>
+                    <!-- The badge sits below the wordmark rather than beside it — sharing a
+                         row with the subtitle text left too little width on a phone-sized
+                         card and forced an ugly 3-line wrap; stacked, neither element
+                         competes with the other for room at any width. -->
+                    <div style="margin-top:10px;">
+                      <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:${GOLD_SOFT_ON_DARK};border:1px solid rgba(232,194,106,0.4);color:${GOLD};font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">${badge}</span>
+                    </div>
                   </td>
                 </tr>
               </table>
