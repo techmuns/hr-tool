@@ -7,16 +7,32 @@ import { confirmDialog } from "../confirm";
 import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import { cycleLabel, payDueDate } from "../../worker/payslip";
-import type { PayrollWithName } from "../types";
+import { AdjustmentsSection } from "./Adjustments";
+import type { CycleAdjustments, PayrollWithName } from "../types";
 
 interface EmailResult {
   sent: string[];
   failed: { name: string; error: string }[];
 }
 
+/**
+ * One cycle, one screen: what everyone is being paid, and everything that
+ * decides it.
+ *
+ * Payslips and adjustments used to be separate tabs, each with its own month
+ * picker. Now that payroll recomputes from its inputs on every read, that split
+ * only made the automation invisible — you approved something in one tab and
+ * had to go and look in another to see whether it had landed. Together, an
+ * approval visibly moves a net-pay figure a few rows up the same page.
+ *
+ * This component owns the period and the loading; the adjustment panes below
+ * call onChanged after every write, which reloads BOTH halves so the payslip
+ * table never lags behind the thing that changed it.
+ */
 export function Payroll() {
   const [period, setPeriod] = useState(currentMonth());
   const [rows, setRows] = useState<PayrollWithName[]>([]);
+  const [adjustments, setAdjustments] = useState<CycleAdjustments | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
@@ -27,19 +43,28 @@ export function Payroll() {
   // owned by the user's checkbox clicks until the period changes.
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  // The server recomputes the period on every read, so this is both "load" and
-  // what used to be "generate". `force` skips the GET cache — otherwise a fresh
-  // approval could be masked by a 20s-old response.
+  /**
+   * Reads the cycle. GET /admin/payroll recomputes the period server-side
+   * before returning, so this doubles as "recalculate" — there is nothing else
+   * to press. `force` skips the 20s GET cache, which would otherwise serve a
+   * stale answer right after a write.
+   *
+   * The two requests are independent: syncing payroll cannot change anything
+   * the adjustments response reports, so they run in parallel.
+   */
   function load() {
     setLoading(true);
     setError(null);
-    api
-      .get<PayrollWithName[]>(`/admin/payroll?period=${period}`, { force: true })
-      .then((data) => {
-        setRows(data);
+    Promise.all([
+      api.get<PayrollWithName[]>(`/admin/payroll?period=${period}`, { force: true }),
+      api.get<CycleAdjustments>(`/admin/adjustments?period=${period}`, { force: true }),
+    ])
+      .then(([payroll, adj]) => {
+        setRows(payroll);
+        setAdjustments(adj);
         // Default to everyone we can actually reach; people with no address on
         // file start unchecked rather than failing later.
-        setSelected(new Set(data.filter((r) => r.employee_email).map((r) => r.employee_id)));
+        setSelected(new Set(payroll.filter((r) => r.employee_email).map((r) => r.employee_id)));
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -55,6 +80,7 @@ export function Payroll() {
   const paidOn = rows.find((r) => r.paid_at)?.paid_at ?? null;
   const mailable = useMemo(() => rows.filter((r) => r.employee_email), [rows]);
   const selectedCount = rows.filter((r) => selected.has(r.employee_id)).length;
+  const pendingCount = adjustments?.pending.length ?? 0;
 
   function toggle(employeeId: number) {
     setSelected((prev) => {
@@ -92,7 +118,10 @@ export function Payroll() {
   async function setPaid(paid: boolean) {
     if (paid) {
       const ok = await confirmDialog(
-        `Mark the ${cycleLabel(period)} cycle as paid for all ${rows.length} people on this payroll?`,
+        `Mark the ${cycleLabel(period)} cycle as paid for all ${rows.length} people on this payroll?` +
+          (pendingCount > 0
+            ? ` ${pendingCount} reimbursement${pendingCount === 1 ? " is" : "s are"} still awaiting approval and won't be included.`
+            : ""),
         { confirmLabel: "Mark paid" },
       );
       if (!ok) return;
@@ -137,7 +166,7 @@ export function Payroll() {
         <div style={{ display: "flex", gap: 8 }}>
           <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }} />
           <Button disabled={busy} onClick={() => load()} title="Re-read this cycle">
-            Refresh
+            {loading ? "Refreshing…" : "Refresh"}
           </Button>
           <Button disabled={rows.length === 0} onClick={() => exportPayrollPdf(period, rows)}>
             Export PDF
@@ -153,7 +182,7 @@ export function Payroll() {
             <strong>{allPaid ? "Dues paid" : "Dues outstanding"}</strong>
             <span className="muted">
               {/* The month picker says "August 2026", but the cycle it bills is
-                  11 Aug – 10 Sep — spell that out so the two can't be confused. */}
+                  11 Jul – 10 Aug — spell that out so the two can't be confused. */}
               {` · cycle ${cycleLabel(period)}`}
               {allPaid && paidOn
                 ? ` · marked paid ${formatDate(paidOn)}`
@@ -161,7 +190,8 @@ export function Payroll() {
               {!allPaid && paidCount > 0 && ` · ${paidCount} of ${rows.length} already marked`}
               {/* Says which of the two states these figures are in, since that
                   decides whether an approval made now would still move them. */}
-              {allPaid ? " · figures frozen as paid" : " · figures track approvals and deductions live"}
+              {allPaid ? " · figures frozen as paid" : " · updates live"}
+              {pendingCount > 0 && ` · ${pendingCount} awaiting approval below`}
             </span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -285,6 +315,14 @@ export function Payroll() {
           )}
         </tbody>
       </table>
+
+      <AdjustmentsSection
+        period={period}
+        data={adjustments}
+        busy={busy}
+        onChanged={load}
+        onError={setError}
+      />
     </Card>
   );
 }

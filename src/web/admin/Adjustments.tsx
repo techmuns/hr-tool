@@ -1,30 +1,40 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { BILLS_ENABLED, BillLink } from "../components/Bill";
 import { confirmDialog } from "../confirm";
-import { currentMonth, formatDate, todayISODate } from "../date";
+import { formatDate, todayISODate } from "../date";
 import { formatINR } from "../money";
 import { cycleLabel, periodForDate } from "../../worker/payslip";
 import type { CycleAdjustments, Employee, ReimbursementStatus } from "../types";
 
 /**
- * Everything that pushes a cycle's pay off the plain monthly salary, in one
- * place: reimbursements waiting on HR, the ones already decided, deductions HR
- * books by hand, and what unpaid leave is costing.
+ * Everything that pushes a cycle's pay off the plain monthly salary:
+ * reimbursements waiting on HR, the ones already decided, deductions HR books
+ * by hand, and what unpaid leave is costing.
  *
- * None of it writes to the payroll table. These are the inputs the Payroll tab's
- * "Generate" reads, which is why the banner keeps saying so — approving
- * something here does not move anyone's net pay until payroll is re-generated.
+ * A section of the Payroll tab rather than a tab of its own — the period, the
+ * data and the loading all belong to the parent, so there is exactly one month
+ * picker and one refresh for the cycle. Every write here calls onChanged, which
+ * reloads the payslip table above too; that is what makes an approval visibly
+ * move a net-pay figure instead of quietly changing a number somewhere else.
  */
-export function Adjustments() {
-  const [period, setPeriod] = useState(currentMonth());
-  const [data, setData] = useState<CycleAdjustments | null>(null);
+export function AdjustmentsSection({
+  period,
+  data,
+  busy,
+  onChanged,
+  onError,
+}: {
+  period: string;
+  data: CycleAdjustments | null;
+  /** Parent is mid-request; keeps the two halves from being driven at once. */
+  busy: boolean;
+  onChanged: () => void;
+  onError: (message: string | null) => void;
+}) {
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   const [addingReim, setAddingReim] = useState(false);
@@ -42,35 +52,24 @@ export function Adjustments() {
   const [dedNote, setDedNote] = useState("");
   const [dedBusy, setDedBusy] = useState(false);
 
-  function load() {
-    setLoading(true);
-    setError(null);
-    api
-      .get<CycleAdjustments>(`/admin/adjustments?period=${period}`, { force: true })
-      .then(setData)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, [period]);
-
   useEffect(() => {
     api.get<Employee[]>("/employees").then(setEmployees).catch(() => {});
   }, []);
 
-  // Deductions are a payroll concept, so only people payroll actually runs for.
+  // Adjustments are a payroll concept, so only people payroll actually runs for.
   const payrollEmployees = useMemo(() => employees.filter((e) => e.on_payroll !== 0), [employees]);
 
   // Which cycle a reimbursement filed right now would fall into — not
   // necessarily the one being viewed, since the month picker moves freely.
   const todaysPeriod = periodForDate(todayISODate());
 
-  const approvedTotal = useMemo(
-    () => (data?.reimbursements ?? []).filter((r) => r.status === "approved").reduce((s, r) => s + r.amount, 0),
-    [data],
-  );
-  const deductionTotal = useMemo(() => (data?.deductions ?? []).reduce((s, d) => s + d.amount, 0), [data]);
-  const leaveTotal = useMemo(() => (data?.leave ?? []).reduce((s, l) => s + l.amount, 0), [data]);
+  const pending = data?.pending ?? [];
+  const decided = data?.reimbursements ?? [];
+  const deductions = data?.deductions ?? [];
+  const leave = data?.leave ?? [];
+
+  const deductionTotal = useMemo(() => deductions.reduce((s, d) => s + d.amount, 0), [deductions]);
+  const leaveTotal = useMemo(() => leave.reduce((s, l) => s + l.amount, 0), [leave]);
 
   async function decide(id: number, status: ReimbursementStatus, employeeName: string, amount: number) {
     if (status === "rejected") {
@@ -81,7 +80,7 @@ export function Adjustments() {
       if (!ok) return;
     }
     setBusyId(id);
-    setError(null);
+    onError(null);
     try {
       await api.patch(`/admin/reimbursements/${id}/status`, { status, note: notes[id] ?? "" });
       setNotes((n) => {
@@ -89,11 +88,47 @@ export function Adjustments() {
         delete next[id];
         return next;
       });
-      load();
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update reimbursement");
+      onError(err instanceof Error ? err.message : "Failed to update reimbursement");
     } finally {
       setBusyId(null);
+    }
+  }
+
+  /**
+   * File a reimbursement on someone's behalf. Goes to the same endpoint the
+   * employee drawer uses, which marks it approved on the spot — HR entering it
+   * IS the approval, so routing it into the queue below for HR to then approve
+   * to themselves would be a pointless round trip.
+   */
+  async function addReimbursement() {
+    const employeeId = Number(reimEmployee);
+    const rupees = parseFloat(reimAmount);
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      onError("Pick who the reimbursement is for");
+      return;
+    }
+    if (!rupees || rupees <= 0) {
+      onError("Enter a reimbursement amount greater than 0");
+      return;
+    }
+    setReimBusy(true);
+    onError(null);
+    try {
+      await api.post(`/admin/employees/${employeeId}/reimbursements`, {
+        amount: Math.round(rupees * 100),
+        note: reimNote.trim(),
+      });
+      setReimEmployee("");
+      setReimAmount("");
+      setReimNote("");
+      setAddingReim(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to add reimbursement");
+    } finally {
+      setReimBusy(false);
     }
   }
 
@@ -101,15 +136,15 @@ export function Adjustments() {
     const employeeId = Number(dedEmployee);
     const rupees = parseFloat(dedAmount);
     if (!Number.isInteger(employeeId) || employeeId <= 0) {
-      setError("Pick who the deduction is for");
+      onError("Pick who the deduction is for");
       return;
     }
     if (!rupees || rupees <= 0) {
-      setError("Enter a deduction amount greater than 0");
+      onError("Enter a deduction amount greater than 0");
       return;
     }
     setDedBusy(true);
-    setError(null);
+    onError(null);
     try {
       await api.post("/admin/deductions", {
         employee_id: employeeId,
@@ -121,47 +156,11 @@ export function Adjustments() {
       setDedAmount("");
       setDedNote("");
       setAdding(false);
-      load();
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add deduction");
+      onError(err instanceof Error ? err.message : "Failed to add deduction");
     } finally {
       setDedBusy(false);
-    }
-  }
-
-  /**
-   * File a reimbursement on someone's behalf. Goes to the same endpoint the
-   * employee drawer uses, which marks it approved on the spot — HR entering it
-   * IS the approval, so routing it into the queue above for HR to then approve
-   * to themselves would be a pointless round trip.
-   */
-  async function addReimbursement() {
-    const employeeId = Number(reimEmployee);
-    const rupees = parseFloat(reimAmount);
-    if (!Number.isInteger(employeeId) || employeeId <= 0) {
-      setError("Pick who the reimbursement is for");
-      return;
-    }
-    if (!rupees || rupees <= 0) {
-      setError("Enter a reimbursement amount greater than 0");
-      return;
-    }
-    setReimBusy(true);
-    setError(null);
-    try {
-      await api.post(`/admin/employees/${employeeId}/reimbursements`, {
-        amount: Math.round(rupees * 100),
-        note: reimNote.trim(),
-      });
-      setReimEmployee("");
-      setReimAmount("");
-      setReimNote("");
-      setAddingReim(false);
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add reimbursement");
-    } finally {
-      setReimBusy(false);
     }
   }
 
@@ -172,56 +171,37 @@ export function Adjustments() {
     });
     if (!ok) return;
     setBusyId(id);
-    setError(null);
+    onError(null);
     try {
       await api.del(`/admin/deductions/${id}`);
-      load();
+      onChanged();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove deduction");
+      onError(err instanceof Error ? err.message : "Failed to remove deduction");
     } finally {
       setBusyId(null);
     }
   }
 
-  const pending = data?.pending ?? [];
-  const decided = data?.reimbursements ?? [];
+  const frozen = data?.paid ?? false;
+  const rowBusy = (id: number) => busy || busyId === id;
 
   return (
-    <Card
-      title="Adjustments"
-      actions={
-        <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }} />
-      }
-    >
-      {error && <p className="error-text">{error}</p>}
-
-      <div className="payroll-bar">
-        <div>
-          <strong>Cycle {cycleLabel(period)}</strong>
-          <span className="muted">
-            {` · reimbursements ${formatINR(approvedTotal)} · deductions ${formatINR(
-              deductionTotal + leaveTotal,
-            )}`}
-            {data?.paid ? " · dues marked paid" : " · dues outstanding"}
-          </span>
-        </div>
-      </div>
+    <>
+      <h3 className="drawer-section section-group">Adjustments · {cycleLabel(period)}</h3>
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        {data?.paid ? (
+        {frozen ? (
           <>
-            This cycle&rsquo;s dues are marked paid, so its payslip figures are frozen at what was paid out. Changes
-            here no longer move them — reopen the cycle with <strong>Mark unpaid</strong> on the Payroll tab if it
-            genuinely has to change.
+            This cycle&rsquo;s dues are marked paid, so the payslip figures above are frozen at what was paid out.
+            Changes here no longer move them — use <strong>Mark unpaid</strong> to reopen the cycle if it genuinely
+            has to change.
           </>
         ) : (
-          <>Payroll recalculates from these as you go — approvals and deductions hit the payslip straight away.</>
+          <>The table above recalculates from these as you go — anything you approve or add lands on it immediately.</>
         )}
       </p>
 
-      {loading && <p className="muted">Loading…</p>}
-
-      <h3 className="drawer-section">Reimbursements awaiting approval ({pending.length})</h3>
-      <Button onClick={() => setAddingReim((v) => !v)} disabled={reimBusy}>
+      <h4 className="drawer-section">Reimbursements awaiting approval ({pending.length})</h4>
+      <Button onClick={() => setAddingReim((v) => !v)} disabled={reimBusy || busy}>
         + Add reimbursement
       </Button>
       {addingReim && (
@@ -303,7 +283,7 @@ export function Adjustments() {
                 <button
                   type="button"
                   className="link-btn"
-                  disabled={busyId === r.id}
+                  disabled={rowBusy(r.id)}
                   onClick={() => decide(r.id, "approved", r.employee_name, r.amount)}
                 >
                   Approve
@@ -312,7 +292,7 @@ export function Adjustments() {
                   type="button"
                   className="link-btn"
                   style={{ marginLeft: 8 }}
-                  disabled={busyId === r.id}
+                  disabled={rowBusy(r.id)}
                   onClick={() => decide(r.id, "rejected", r.employee_name, r.amount)}
                 >
                   Reject
@@ -330,7 +310,7 @@ export function Adjustments() {
         </tbody>
       </table>
 
-      <h3 className="drawer-section">Decided this cycle</h3>
+      <h4 className="drawer-section">Decided this cycle</h4>
       <table>
         <thead>
           <tr>
@@ -365,7 +345,7 @@ export function Adjustments() {
                   type="button"
                   className="link-btn"
                   title="Put this back in the approval queue"
-                  disabled={busyId === r.id}
+                  disabled={rowBusy(r.id)}
                   onClick={() => decide(r.id, "pending", r.employee_name, r.amount)}
                 >
                   Undo
@@ -383,8 +363,8 @@ export function Adjustments() {
         </tbody>
       </table>
 
-      <h3 className="drawer-section">Manual deductions · {formatINR(deductionTotal)}</h3>
-      <Button onClick={() => setAdding((v) => !v)} disabled={dedBusy}>
+      <h4 className="drawer-section">Manual deductions · {formatINR(deductionTotal)}</h4>
+      <Button onClick={() => setAdding((v) => !v)} disabled={dedBusy || busy}>
         + Add deduction
       </Button>
       {adding && (
@@ -438,7 +418,7 @@ export function Adjustments() {
           </tr>
         </thead>
         <tbody>
-          {(data?.deductions ?? []).map((d) => (
+          {deductions.map((d) => (
             <tr key={d.id}>
               <td>{formatDate(d.created_at)}</td>
               <td>{d.employee_name}</td>
@@ -450,7 +430,7 @@ export function Adjustments() {
                   type="button"
                   className="row-remove-btn"
                   title="Remove deduction"
-                  disabled={busyId === d.id}
+                  disabled={rowBusy(d.id)}
                   onClick={() => removeDeduction(d.id, d.employee_name, d.amount)}
                 >
                   ✕
@@ -458,7 +438,7 @@ export function Adjustments() {
               </td>
             </tr>
           ))}
-          {(data?.deductions ?? []).length === 0 && (
+          {deductions.length === 0 && (
             <tr>
               <td colSpan={6} className="muted">
                 No manual deductions on this cycle.
@@ -468,7 +448,7 @@ export function Adjustments() {
         </tbody>
       </table>
 
-      <h3 className="drawer-section">Leave deductions · {formatINR(leaveTotal)}</h3>
+      <h4 className="drawer-section">Leave deductions · {formatINR(leaveTotal)}</h4>
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Derived from approved unpaid leave falling inside this cycle — not editable here. Change the leave itself to
         change these.
@@ -483,7 +463,7 @@ export function Adjustments() {
           </tr>
         </thead>
         <tbody>
-          {(data?.leave ?? []).map((l) => (
+          {leave.map((l) => (
             <tr key={l.employee_id}>
               <td>{l.employee_name}</td>
               <td>{l.unpaid_days}</td>
@@ -491,7 +471,7 @@ export function Adjustments() {
               <td>{formatINR(l.amount)}</td>
             </tr>
           ))}
-          {(data?.leave ?? []).length === 0 && (
+          {leave.length === 0 && (
             <tr>
               <td colSpan={4} className="muted">
                 No unpaid leave in this cycle.
@@ -500,6 +480,6 @@ export function Adjustments() {
           )}
         </tbody>
       </table>
-    </Card>
+    </>
   );
 }

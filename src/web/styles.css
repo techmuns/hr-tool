@@ -1013,6 +1013,22 @@ thead .hm-name {
   border-bottom: 1px solid var(--border);
 }
 
+/**
+ * Group heading above a run of .drawer-section sub-headings — used on the
+ * Payroll tab to separate the payslip table from the adjustments that feed it.
+ * .drawer-section styles by class rather than tag, so an h3 and the h4s under
+ * it would otherwise render identically and read as one flat list.
+ */
+.section-group {
+  font-size: 14px;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  font-weight: 600;
+  margin-top: 34px;
+  border-bottom-width: 2px;
+}
+
 .drawer-foot {
   display: flex;
   align-items: center;
