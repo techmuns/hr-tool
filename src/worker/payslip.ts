@@ -30,6 +30,10 @@ export const COMPANY_NAME = "Munshot";
 // Matches the Munshot mark: a gold "M" on near-black navy. Two golds, not one —
 // GOLD reads clearly on the dark header, but that same value is too light to
 // pass as body text on the white card below, so GOLD_DEEP stands in there.
+// Exported as one object — rather than importing eight loose constants — so
+// the "Download PDF" button's jsPDF rendering (src/web/payslipPdf.ts) draws
+// with the exact same hex values as this HTML card instead of a hand-copied
+// set that could drift from it.
 const NAVY = "#11141f";
 const GOLD = "#e8c26a";
 const GOLD_SOFT_ON_DARK = "rgba(232, 194, 106, 0.16)";
@@ -40,6 +44,8 @@ const MUTED = "#52514e";
 const BORDER = "#e5e5e2";
 const CANVAS = "#f0f2f5";
 const DEDUCT = "#c0392b";
+
+export const PAYSLIP_COLORS = { NAVY, GOLD, GOLD_DEEP, GOLD_TINT, INK, MUTED, BORDER, DEDUCT };
 
 const inr = new Intl.NumberFormat("en-IN", {
   style: "currency",
@@ -283,6 +289,7 @@ export function payslipHtml(r: PayslipRow): string {
           <tr>
             <td style="padding:0 24px 22px;border-top:1px solid ${BORDER};">
               <div style="padding-top:14px;font-size:12px;color:${MUTED};">This is a system generated payslip.</div>
+              <div style="padding-top:4px;font-size:12px;color:${MUTED};">You can also download this as a PDF anytime from the employee portal.</div>
             </td>
           </tr>
         </table>

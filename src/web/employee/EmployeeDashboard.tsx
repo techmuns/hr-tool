@@ -6,6 +6,7 @@ import { WorkingDays } from "./WorkingDays";
 import { Profile } from "./Profile";
 import { LeaveForm } from "./LeaveForm";
 import { ReimbursementRequest } from "./ReimbursementRequest";
+import { Payslips } from "./Payslips";
 import { FeedbackForm } from "./FeedbackForm";
 import { Chat } from "./Chat";
 import { api, primeEmployeeBootstrap } from "../api";
@@ -13,6 +14,7 @@ import type { Employee } from "../types";
 
 const VIEWS = [
   { key: "home", label: "Home" },
+  { key: "payslips", label: "Payslips" },
   { key: "feedback", label: "Feedback" },
   { key: "chat", label: "Chat with HR" },
 ];
@@ -60,6 +62,7 @@ export function EmployeeDashboard() {
               <ReimbursementRequest />
             </>
           )}
+          {view === "payslips" && <Payslips />}
           {view === "feedback" && <FeedbackForm />}
           {view === "chat" && <Chat />}
         </div>

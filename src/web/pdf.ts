@@ -1,15 +1,8 @@
 import { jsPDF } from "jspdf";
 import { formatDate } from "./date";
+import { formatRupeesPlain } from "./money";
 import { cycleLabel } from "../worker/payslip";
 import type { PayrollWithName } from "./types";
-
-// jsPDF's built-in Helvetica font only supports WinAnsi (Windows-1252), which
-// does not include the ₹ glyph — it renders as a broken character. Use an
-// ASCII-safe "Rs." prefix in the PDF instead of the shared formatINR().
-const inrPlain = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function formatRupeesPlain(paise: number): string {
-  return `Rs. ${inrPlain.format(paise / 100)}`;
-}
 
 interface Column {
   header: string;

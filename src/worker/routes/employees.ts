@@ -10,6 +10,7 @@ import type {
   EmploymentType,
   LeaveRequest,
   Payroll,
+  PayrollWithName,
   Reimbursement,
   Tier,
   WorkMode,
@@ -109,6 +110,30 @@ app.get("/reimbursements/me", async (c) => {
   )
     .bind(employee.id)
     .all<Reimbursement>();
+  return c.json(rows.results);
+});
+
+/**
+ * An employee's own payroll history — the "Download PDF" button on the
+ * Payslips tab reads this. Note this does NOT run syncPayroll first the way
+ * the admin listing does: syncing recomputes the OPEN cycle from live
+ * approvals and deductions, which is exactly the half-decided in-progress
+ * state an employee should not be looking at (and can't act on) before HR has
+ * finished the cycle. Whatever the admin's last read left in this table —
+ * settled figures for past cycles, or nothing yet for a cycle not generated —
+ * is what this returns.
+ */
+app.get("/payroll/me", async (c) => {
+  const employee = c.get("employee");
+  const rows = await c.env.DB.prepare(
+    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title
+     FROM payroll p
+     JOIN employees e ON e.id = p.employee_id
+     WHERE p.employee_id = ?
+     ORDER BY p.period DESC`
+  )
+    .bind(employee.id)
+    .all<PayrollWithName>();
   return c.json(rows.results);
 });
 

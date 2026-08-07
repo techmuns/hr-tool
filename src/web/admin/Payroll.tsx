@@ -6,6 +6,7 @@ import { currentMonth, formatDate } from "../date";
 import { confirmDialog } from "../confirm";
 import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
+import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate } from "../../worker/payslip";
 import { AdjustmentsSection } from "./Adjustments";
 import type { CycleAdjustments, PayrollWithName } from "../types";
@@ -286,6 +287,15 @@ export function Payroll() {
                   onClick={() => emailPayslips([row.employee_id])}
                 >
                   {emailingIds.length === 1 && emailingIds[0] === row.employee_id ? "Sending…" : "Send"}
+                </button>
+                <button
+                  type="button"
+                  className="link-btn"
+                  style={{ marginLeft: 8 }}
+                  title="Download this person's payslip as a PDF, matching the emailed card"
+                  onClick={() => exportPayslipPdf(row)}
+                >
+                  PDF
                 </button>
                 {row.payslip_emailed_at && (
                   <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>

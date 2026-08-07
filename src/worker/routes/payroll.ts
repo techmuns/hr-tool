@@ -23,7 +23,7 @@ app.get("/admin/payroll", async (c) => {
   await syncPayroll(c.env.DB, period);
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name, e.email AS employee_email FROM payroll p
+    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`

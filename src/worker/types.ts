@@ -191,4 +191,6 @@ export interface PayrollWithName extends Payroll {
   employee_name: string;
   /** Needed by the UI to know who can actually be mailed a payslip. */
   employee_email: string;
+  /** Needed by the "Download PDF" button — it renders the same card as the email. */
+  job_title: string;
 }
