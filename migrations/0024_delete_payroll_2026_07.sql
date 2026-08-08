@@ -1,0 +1,18 @@
+-- Delete the 11 Jun - 10 Jul 2026 payroll cycle.
+--
+-- Billing periods are named for the month they're PAID in, not the month they
+-- cover (see payCycle in src/worker/payslip.ts): a cycle running 11 Jun - 10
+-- Jul, paid 11 Jul, is period '2026-07'.
+--
+-- Only the generated payroll rows go — the reimbursements, manual deductions
+-- and leave requests that fed them are untouched, since those are independent
+-- records keyed by employee/date, not by a payroll row. Deleting them here
+-- would make it impossible to correctly regenerate this cycle later; leaving
+-- them means a future "Generate" on this period reconstructs it exactly as
+-- payroll's own math would from current data.
+--
+-- This is also the whole fix for "no one downloads its PDF": both the admin
+-- Payroll tab and the employee Payslips tab (and its Download PDF button)
+-- read straight from this table — a period with no rows here has nothing to
+-- list and nothing to download.
+DELETE FROM payroll WHERE period = '2026-07';
