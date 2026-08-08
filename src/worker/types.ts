@@ -194,3 +194,37 @@ export interface PayrollWithName extends Payroll {
   /** Needed by the "Download PDF" button — it renders the same card as the email. */
   job_title: string;
 }
+
+export type CertificateType = "leaving" | "lor";
+
+/**
+ * A leaving certificate or letter of recommendation HR issued. Fields are a
+ * snapshot taken at issue time (name, designation, dates) rather than a live
+ * join to `employees` — a certificate is a record of what was actually
+ * issued, and must keep reading the same after the employee's record changes
+ * or is deleted.
+ */
+export interface Certificate {
+  id: number;
+  /** Null once the employee is deleted; the record itself is kept. */
+  employee_id: number | null;
+  type: CertificateType;
+  employee_name: string;
+  /** Snapshot from issue time; a live send prefers the employee's current email if they still exist. */
+  employee_email: string;
+  job_title: string;
+  date_of_joining: string | null;
+  /** Only meaningful for 'leaving'; null for other types. */
+  last_working_day: string | null;
+  /** The exact letter body HR wrote/edited for this issue. */
+  body: string;
+  created_at: string;
+  created_by: number | null;
+  /** Snapshot of where it was sent; null until the first send. */
+  emailed_to: string | null;
+  emailed_at: string | null;
+}
+
+export interface CertificateWithCreator extends Certificate {
+  created_by_name: string | null;
+}

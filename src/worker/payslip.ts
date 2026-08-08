@@ -23,28 +23,22 @@
  */
 
 import { MUNSHOT_LOGO_DATA_URI } from "./munshotLogo";
+import { COMPANY_NAME, BRAND_COLORS } from "./brand";
+import { escapeHtml } from "./htmlEscape";
 
-/** Shown as the payslip header. The only place the company name is spelled out. */
-export const COMPANY_NAME = "Munshot";
+export { COMPANY_NAME };
 
-// Matches the Munshot mark: a gold "M" on near-black navy. Two golds, not one —
-// GOLD reads clearly on the dark header, but that same value is too light to
-// pass as body text on the white card below, so GOLD_DEEP stands in there.
-// Exported as one object — rather than importing eight loose constants — so
-// the "Download PDF" button's jsPDF rendering (src/web/payslipPdf.ts) draws
-// with the exact same hex values as this HTML card instead of a hand-copied
-// set that could drift from it.
-const NAVY = "#11141f";
-const GOLD = "#e8c26a";
-const GOLD_SOFT_ON_DARK = "rgba(232, 194, 106, 0.16)";
-const GOLD_DEEP = "#8a5f0a"; // darker than GOLD — needs to clear 4.5:1 on white/GOLD_TINT for the 12px net-pay label
-const GOLD_TINT = "#faf1de";
-const INK = "#0b0b0b";
-const MUTED = "#52514e";
-const BORDER = "#e5e5e2";
+const { NAVY, GOLD, GOLD_SOFT_ON_DARK, GOLD_DEEP, GOLD_TINT, INK, MUTED, BORDER } = BRAND_COLORS;
 const CANVAS = "#f0f2f5";
+/** Payslip-specific, not part of the brand identity — deduction amounts only. */
 const DEDUCT = "#c0392b";
 
+/**
+ * Exported as one object — rather than importing eight loose constants — so
+ * the "Download PDF" button's jsPDF rendering (src/web/payslipPdf.ts) draws
+ * with the exact same hex values as this HTML card instead of a hand-copied
+ * set that could drift from it.
+ */
 export const PAYSLIP_COLORS = { NAVY, GOLD, GOLD_DEEP, GOLD_TINT, INK, MUTED, BORDER, DEDUCT };
 
 const inr = new Intl.NumberFormat("en-IN", {
@@ -70,19 +64,6 @@ function dateLabel(iso: string): string {
   });
 }
 
-/**
- * Escapes text interpolated into the card. employee_name and job_title are
- * free text an employee or HR typed, not markup this module controls — a
- * stray `<` or `&` in either must not be able to break the layout.
- */
-function esc(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 export interface PayCycle {
   /** First day covered, inclusive — the 11th of the month before the period. */
@@ -254,8 +235,8 @@ export function payslipHtml(r: PayslipRow): string {
           <tr>
             <td style="padding:22px 24px 4px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${metaRow("Employee", esc(r.employee_name))}
-                ${metaRow("Designation", esc(r.job_title || "—"))}
+                ${metaRow("Employee", escapeHtml(r.employee_name))}
+                ${metaRow("Designation", escapeHtml(r.job_title || "—"))}
                 ${metaRow("Worked Days", String(r.paid_days))}
               </table>
             </td>

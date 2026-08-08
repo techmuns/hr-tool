@@ -13,7 +13,7 @@ const WORK_MODE_LABEL: Record<WorkMode, string> = {
   hybrid: "Hybrid",
 };
 
-export function EmployeeDirectory() {
+export function EmployeeDirectory({ onGoToCertificates }: { onGoToCertificates: (employeeId: number) => void }) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
@@ -124,7 +124,12 @@ export function EmployeeDirectory() {
       </table>
 
       {panelTarget !== null && (
-        <EmployeePanel target={panelTarget} onClose={() => setPanelTarget(null)} onChanged={load} />
+        <EmployeePanel
+          target={panelTarget}
+          onClose={() => setPanelTarget(null)}
+          onChanged={load}
+          onGoToCertificates={onGoToCertificates}
+        />
       )}
     </Card>
   );

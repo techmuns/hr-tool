@@ -52,7 +52,7 @@ interface Editing {
   y: number;
 }
 
-export function AttendanceTable() {
+export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (employeeId: number) => void }) {
   const [month, setMonth] = useState(currentMonth());
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceWithName[]>([]);
@@ -347,7 +347,12 @@ export function AttendanceTable() {
       )}
 
       {panelTarget !== null && (
-        <EmployeePanel target={panelTarget} onClose={() => setPanelTarget(null)} onChanged={load} />
+        <EmployeePanel
+          target={panelTarget}
+          onClose={() => setPanelTarget(null)}
+          onChanged={load}
+          onGoToCertificates={onGoToCertificates}
+        />
       )}
     </Card>
   );

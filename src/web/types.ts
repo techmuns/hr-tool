@@ -26,4 +26,7 @@ export type {
   DeductionWithName,
   LeaveDeduction,
   CycleAdjustments,
+  CertificateType,
+  Certificate,
+  CertificateWithCreator,
 } from "../worker/types";

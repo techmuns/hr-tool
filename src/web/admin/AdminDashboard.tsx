@@ -3,6 +3,7 @@ import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
+import { Certificates } from "./Certificates";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
@@ -24,12 +25,21 @@ export function AdminDashboard() {
     // Payroll covers payslips and the adjustments that feed them — one cycle,
     // one screen, so an approval and the net pay it moves stay side by side.
     { key: "payroll", label: "Payroll" },
+    { key: "certificates", label: "Certificates" },
     ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
     { key: "chat", label: "Chat" },
   ];
 
   const [view, setView] = useState(isHR ? "home" : "attendance");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
+  // Set when "Remove employee" offers to send a leaving certificate first —
+  // switches to this tab with that person already selected in the form.
+  const [certificatePreset, setCertificatePreset] = useState<number | null>(null);
+
+  function goToCertificates(employeeId: number) {
+    setCertificatePreset(employeeId);
+    setView("certificates");
+  }
 
   return (
     <div className="app-shell">
@@ -49,9 +59,15 @@ export function AdminDashboard() {
               <WorkingDays refreshSignal={attendanceRefresh} />
             </>
           )}
-          {view === "attendance" && <AttendanceTable />}
-          {view === "employees" && <EmployeeDirectory />}
+          {view === "attendance" && <AttendanceTable onGoToCertificates={goToCertificates} />}
+          {view === "employees" && <EmployeeDirectory onGoToCertificates={goToCertificates} />}
           {view === "payroll" && <Payroll />}
+          {view === "certificates" && (
+            <Certificates
+              presetEmployeeId={certificatePreset}
+              onConsumedPreset={() => setCertificatePreset(null)}
+            />
+          )}
           {isFounder && view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}
         </div>
