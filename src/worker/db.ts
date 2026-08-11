@@ -18,6 +18,24 @@ export function businessDaysFrom(count: number): string[] {
   return dates;
 }
 
+/**
+ * The `count` most recent business days (Mon–Fri) strictly BEFORE `endISO`,
+ * returned oldest→newest. Weekends are skipped, so from a Monday you get the
+ * previous Fri/Thu/Wed. Days are reckoned in UTC to match how `work_date` is
+ * stored (see todayISODate) — the attendance reminder job compares against it.
+ */
+export function recentBusinessDaysBefore(endISO: string, count: number): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${endISO}T00:00:00Z`);
+  cursor.setUTCDate(cursor.getUTCDate() - 1);
+  while (dates.length < count) {
+    const day = cursor.getUTCDay();
+    if (day !== 0 && day !== 6) dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return dates.reverse();
+}
+
 /** Inclusive business days (Mon–Fri) between two ISO dates, as ISO dates. */
 export function businessDaysInRange(startISO: string, endISO: string): string[] {
   const dates: string[] = [];

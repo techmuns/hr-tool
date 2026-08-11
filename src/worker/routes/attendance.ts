@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
 import { nowISO, todayISODate } from "../db";
+import { runAttendanceReminders } from "../attendanceReminders";
 import type { Attendance, AttendanceStatus, AttendanceWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -77,6 +78,18 @@ app.get("/admin/attendance", requireAdmin, async (c) => {
   query += " ORDER BY a.work_date DESC, e.name ASC";
   const rows = await c.env.DB.prepare(query).bind(...params).all<AttendanceWithName>();
   return c.json(rows.results);
+});
+
+/**
+ * Manually fire the attendance-reminder pass. The same job runs automatically
+ * on a weekday cron (see wrangler.jsonc / src/worker/attendanceReminders.ts);
+ * this lets HR send it on demand "just in case" — e.g. if the cron didn't run.
+ * Runs the identical logic (only people who've missed the last 3 working days,
+ * one reminder per absence streak), just without the weekday-only guard.
+ */
+app.post("/admin/attendance/reminders", requireAdmin, async (c) => {
+  const result = await runAttendanceReminders(c.env, { manual: true });
+  return c.json(result);
 });
 
 interface AdminAttendanceBody {

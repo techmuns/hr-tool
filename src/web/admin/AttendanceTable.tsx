@@ -62,6 +62,8 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
   const [saving, setSaving] = useState(false);
   const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [reminding, setReminding] = useState(false);
+  const [remindStatus, setRemindStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const months = useMemo(() => recentMonths(12), []);
@@ -154,6 +156,34 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
     }
   }
 
+  async function sendReminders() {
+    const ok = await confirmDialog(
+      "Email a clock-in reminder to everyone who hasn't clocked in for the last 3 working days?",
+      { confirmLabel: "Send reminders" },
+    );
+    if (!ok) return;
+    setReminding(true);
+    setError(null);
+    setRemindStatus(null);
+    try {
+      const res = await api.post<{ sent: string[]; failed: { name: string; error: string }[] }>(
+        "/admin/attendance/reminders",
+      );
+      const parts: string[] = [];
+      parts.push(
+        res.sent.length
+          ? `Reminder sent to ${res.sent.length} ${res.sent.length === 1 ? "person" : "people"}.`
+          : "No reminders needed — everyone's clocked in within the last 3 working days.",
+      );
+      if (res.failed.length) parts.push(`${res.failed.length} couldn't be emailed.`);
+      setRemindStatus(parts.join(" "));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reminders");
+    } finally {
+      setReminding(false);
+    }
+  }
+
   async function setStatus(status: AttendanceStatus) {
     if (!editing) return;
     setSaving(true);
@@ -195,6 +225,9 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
               </option>
             ))}
           </select>
+          <Button onClick={sendReminders} disabled={reminding} title="Email a clock-in reminder to anyone who hasn't clocked in for the last 3 working days">
+            {reminding ? "Sending…" : "Send reminders"}
+          </Button>
           <Button variant="primary" onClick={() => setPanelTarget("new")}>
             + Add employee
           </Button>
@@ -202,6 +235,11 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
       }
     >
       {error && <p className="error-text">{error}</p>}
+      {remindStatus && (
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          {remindStatus}
+        </p>
+      )}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Click a name to view or edit that employee. Click any cell to mark them present, not clocked in, or on leave.
         The count under each name is present days out of {WORKING_DAYS_PER_MONTH} working days/month.

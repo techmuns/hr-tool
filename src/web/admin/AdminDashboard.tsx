@@ -9,6 +9,10 @@ import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
 import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
+import { Profile } from "../employee/Profile";
+import { LeaveForm } from "../employee/LeaveForm";
+import { ReimbursementRequest } from "../employee/ReimbursementRequest";
+import { Payslips } from "../employee/Payslips";
 import { getSession } from "../session";
 
 export function AdminDashboard() {
@@ -16,10 +20,13 @@ export function AdminDashboard() {
   const isHR = tier === "hr";
   const isFounder = tier === "founder";
 
-  // HR clocks in (and only HR); founders don't. Founders see feedback (and only
-  // founders); HR doesn't.
+  // The self-service "Employee view" — clock in/out, own attendance, profile,
+  // leave, reimbursements and payslips — is available to both HR and founders
+  // now, so an admin can use the app as an employee too (it supersedes the old
+  // HR-only "My attendance" tab, which only had the clock and working days).
+  // Founders see feedback (and only founders); HR doesn't.
   const views = [
-    ...(isHR ? [{ key: "home", label: "My attendance" }] : []),
+    { key: "me", label: "Employee view" },
     { key: "attendance", label: "Attendance" },
     { key: "employees", label: "Employees" },
     // Payroll covers payslips and the adjustments that feed them — one cycle,
@@ -30,7 +37,9 @@ export function AdminDashboard() {
     { key: "chat", label: "Chat" },
   ];
 
-  const [view, setView] = useState(isHR ? "home" : "attendance");
+  // HR lands on their own Employee view (as before); founders keep landing on
+  // the org-wide Attendance grid they manage.
+  const [view, setView] = useState(isHR ? "me" : "attendance");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
   // Set when "Remove employee" offers to send a leaving certificate first —
   // switches to this tab with that person already selected in the form.
@@ -53,10 +62,14 @@ export function AdminDashboard() {
       <div className="layout">
         <Nav items={views} active={view} onSelect={setView} />
         <div className="content">
-          {isHR && view === "home" && (
+          {view === "me" && (
             <>
               <ClockCard onChange={() => setAttendanceRefresh((n) => n + 1)} />
               <WorkingDays refreshSignal={attendanceRefresh} />
+              <Profile />
+              <LeaveForm onMarked={() => setAttendanceRefresh((n) => n + 1)} />
+              <ReimbursementRequest />
+              <Payslips />
             </>
           )}
           {view === "attendance" && <AttendanceTable onGoToCertificates={goToCertificates} />}

@@ -34,6 +34,14 @@
   //     "bucket_name": "hr-tool-bills"
   //   }
   // ],
+  // Attendance reminders: fire on weekdays (Mon–Fri) at 06:30 UTC, which is
+  // 12:00 IST (Asia/Kolkata, the team's timezone — the app formats all dates in
+  // it). The scheduled() handler in src/worker/index.ts emails anyone who
+  // hasn't clocked in for the last 3 working days. Cron is always evaluated in
+  // UTC; 06:30 UTC stays on the same weekday as noon IST, so 1-5 is correct.
+  "triggers": {
+    "crons": ["30 6 * * 1-5"]
+  },
   "observability": {
     "enabled": true
   }

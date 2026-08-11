@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-import type { AppEnv } from "./auth";
+import type { AppEnv, Bindings } from "./auth";
+import { runAttendanceReminders } from "./attendanceReminders";
 import authRoutes from "./routes/auth";
 import employeeRoutes from "./routes/employees";
 import attendanceRoutes from "./routes/attendance";
@@ -51,4 +52,15 @@ app.onError((err, c) => {
 
 app.all("*", (c) => c.env.ASSETS.fetch(c.req.raw));
 
-export default app;
+/**
+ * Module-format export so the Worker can serve HTTP (fetch) AND run on a
+ * schedule (scheduled). The cron in wrangler.jsonc fires `scheduled` on
+ * weekdays around noon IST to send attendance reminders; waitUntil keeps the
+ * invocation alive until every email has been attempted.
+ */
+export default {
+  fetch: app.fetch,
+  async scheduled(_controller: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil(runAttendanceReminders(env));
+  },
+} satisfies ExportedHandler<Bindings>;
