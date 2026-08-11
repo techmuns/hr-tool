@@ -179,8 +179,33 @@ app.get("/reimbursements/:id/bill", async (c) => {
 });
 
 app.get("/employees", requireAdmin, async (c) => {
-  const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
+  // Archived people are hidden from the active directory (and thus attendance,
+  // which is built from this list); the Archived tab asks for them with ?archived=1.
+  const archived = c.req.query("archived") === "1" ? 1 : 0;
+  const employees = await c.env.DB.prepare("SELECT * FROM employees WHERE archived = ? ORDER BY id")
+    .bind(archived)
+    .all<Employee>();
   return c.json(employees.results);
+});
+
+/**
+ * Archive an employee (or restore them). Archiving keeps the record and all
+ * their history but drops them out of attendance, payroll and the active
+ * directory — a reversible, non-destructive alternative to Remove.
+ */
+app.post("/admin/employees/:id/archive", requireAdmin, async (c) => {
+  const id = Number(c.req.param("id"));
+  if (Number.isNaN(id)) return c.json({ error: "Invalid employee id" }, 400);
+
+  const existing = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
+  if (!existing) return c.json({ error: "Employee not found" }, 404);
+
+  const body = await c.req.json<{ archived?: boolean }>().catch(() => ({}) as { archived?: boolean });
+  const archived = body.archived === false ? 0 : 1; // default to archiving
+
+  await c.env.DB.prepare("UPDATE employees SET archived = ? WHERE id = ?").bind(archived, id).run();
+  const updated = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?").bind(id).first<Employee>();
+  return c.json(updated);
 });
 
 // Full profile for one employee: their record plus leaves, payroll, and reimbursement history.

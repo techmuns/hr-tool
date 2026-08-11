@@ -203,6 +203,29 @@ export function EmployeePanel({
     }
   }
 
+  async function toggleArchive() {
+    if (isNew || !employee) return;
+    const archiving = !employee.archived;
+    const ok = await confirmDialog(
+      archiving
+        ? `Archive ${employee.name}? They'll be hidden from attendance and payroll, but their record and history are kept — restore them anytime from the Archived tab.`
+        : `Restore ${employee.name} to the active directory?`,
+      { confirmLabel: archiving ? "Archive" : "Restore" },
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post(`/admin/employees/${employee.id}/archive`, { archived: archiving });
+      onChanged();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update archive status");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function changeTier(tier: "employee" | "hr") {
     if (!employee) return;
     setTierBusy(true);
@@ -551,9 +574,14 @@ export function EmployeePanel({
 
         <div className="drawer-foot">
           {!isNew && (
-            <Button variant="danger" onClick={remove} disabled={busy || loading}>
-              Remove
-            </Button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="danger" onClick={remove} disabled={busy || loading}>
+                Remove
+              </Button>
+              <Button onClick={toggleArchive} disabled={busy || loading}>
+                {employee?.archived ? "Restore" : "Archive"}
+              </Button>
+            </div>
           )}
           <div className="drawer-foot-right">
             <Button onClick={onClose} disabled={busy}>

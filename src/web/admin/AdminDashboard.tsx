@@ -7,6 +7,7 @@ import { Certificates } from "./Certificates";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
+import { ArchivedEmployees } from "./ArchivedEmployees";
 import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
 import { getSession } from "../session";
@@ -27,6 +28,7 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
     ...(isHR ? [{ key: "home", label: "My attendance" }] : []),
     { key: "attendance", label: "Attendance" },
     { key: "employees", label: "Employees" },
+    { key: "archived", label: "Archived" },
     // Payroll covers payslips and the adjustments that feed them — one cycle,
     // one screen, so an approval and the net pay it moves stay side by side.
     { key: "payroll", label: "Payroll" },
@@ -68,6 +70,7 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
           )}
           {view === "attendance" && <AttendanceTable onGoToCertificates={goToCertificates} />}
           {view === "employees" && <EmployeeDirectory onGoToCertificates={goToCertificates} />}
+          {view === "archived" && <ArchivedEmployees onGoToCertificates={goToCertificates} />}
           {view === "payroll" && <Payroll />}
           {view === "certificates" && (
             <Certificates

@@ -36,7 +36,7 @@ app.get("/admin/payroll", async (c) => {
                  AND a.work_date BETWEEN ? AND ?) AS in_office_days
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
-     WHERE p.period = ?
+     WHERE p.period = ? AND e.archived = 0
      ORDER BY e.name ASC`
   )
     .bind(cycle.start, cycle.end, cycle.start, cycle.end, period)

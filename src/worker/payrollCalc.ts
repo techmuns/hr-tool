@@ -144,9 +144,10 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
   // 11 Jul – 10 Aug and is paid on 11 Aug. Every window below keys off this.
   const cycle = payCycle(period);
 
-  // Only people kept on payroll — removed people (e.g. freelancers) are skipped.
+  // Only people kept on payroll — removed people (e.g. freelancers) and archived
+  // employees are skipped.
   const [employees, unpaidLeaveDays, approvedReimbursements, manualDeductions] = await Promise.all([
-    db.prepare("SELECT * FROM employees WHERE on_payroll = 1").all<Employee>(),
+    db.prepare("SELECT * FROM employees WHERE on_payroll = 1 AND archived = 0").all<Employee>(),
     unpaidLeaveDaysByEmployee(db, cycle),
     approvedReimbursementsByEmployee(db, cycle),
     manualDeductionsByEmployee(db, period),

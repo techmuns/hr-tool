@@ -154,6 +154,7 @@ export async function runAttendanceReminders(
     `SELECT id, name, email, last_attendance_reminder_at
        FROM employees
       WHERE on_attendance = 1
+        AND archived = 0
         AND tier != 'founder'
         AND employment_type != 'freelancer'
         AND email IS NOT NULL AND email <> ''`,
