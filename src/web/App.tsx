@@ -7,7 +7,7 @@ import { clearSession, getSession, setSession } from "./session";
 import { api, clearApiCache } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
 import type { SessionContext } from "./lib/sdk";
-import type { Employee, EmployeeRole } from "./types";
+import type { Employee, EmployeeRole, Tier } from "./types";
 
 /** True when the URL path is /clock — the quick-clock entry point. */
 function isClockRoute(): boolean {
@@ -19,6 +19,37 @@ function Centered({ children }: { children: ReactNode }) {
 }
 
 type HostStatus = "idle" | "resolving" | "done" | "error";
+
+type AdminViewMode = "admin" | "employee";
+
+/**
+ * Wraps the admin experience with a topbar view switcher: an admin (HR or
+ * founder) can flip into a live preview of the employee screen — the actual
+ * EmployeeDashboard, acting as themselves — and back, without leaving their
+ * session. Plain employees never reach here, so they never see the switch.
+ */
+function AdminArea({ tier }: { tier: Tier }) {
+  const [mode, setMode] = useState<AdminViewMode>("admin");
+  const switcher = (
+    <select
+      className="view-switch"
+      style={{ width: "auto" }}
+      value={mode}
+      onChange={(e) => setMode(e.target.value as AdminViewMode)}
+      aria-label="Switch between admin and employee view"
+      title="Switch view"
+    >
+      <option value="admin">{tier === "founder" ? "Founder view" : "HR view"}</option>
+      <option value="employee">Employee view</option>
+    </select>
+  );
+
+  return mode === "employee" ? (
+    <EmployeeDashboard topbarExtra={switcher} />
+  ) : (
+    <AdminDashboard topbarExtra={switcher} />
+  );
+}
 
 function HrApp({ host }: { host: SessionContext }) {
   const hasToken = !!host.token;
@@ -88,7 +119,7 @@ function HrApp({ host }: { host: SessionContext }) {
   }
 
   if (session.role === "admin") {
-    return <AdminDashboard />;
+    return <AdminArea tier={session.tier} />;
   }
 
   return <EmployeeDashboard />;

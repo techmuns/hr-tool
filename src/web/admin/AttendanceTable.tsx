@@ -6,6 +6,7 @@ import {
   currentMonth,
   dayKey,
   daysForMonth,
+  formatDate,
   formatTime,
   isToday,
   recentMonths,
@@ -63,6 +64,9 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
   const [panelTarget, setPanelTarget] = useState<number | "new" | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [reminding, setReminding] = useState(false);
+  // Which single employee's reminder is in flight (per-row "Send reminder"),
+  // separate from the bulk `reminding` flag above.
+  const [remindingId, setRemindingId] = useState<number | null>(null);
   const [remindStatus, setRemindStatus] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -177,10 +181,35 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
       );
       if (res.failed.length) parts.push(`${res.failed.length} couldn't be emailed.`);
       setRemindStatus(parts.join(" "));
+      await load(); // refresh the "last reminder" column
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reminders");
     } finally {
       setReminding(false);
+    }
+  }
+
+  // Per-employee send, like the payslip per-row "Send". Ignores the 3-day
+  // threshold on the server — HR chose this person.
+  async function sendReminderTo(employee: Employee) {
+    setRemindingId(employee.id);
+    setError(null);
+    setRemindStatus(null);
+    try {
+      const res = await api.post<{ sent: string[]; failed: { name: string; error: string }[] }>(
+        "/admin/attendance/reminders",
+        { employee_ids: [employee.id] },
+      );
+      if (res.failed.length) {
+        setError(`${employee.name}: ${res.failed[0].error}`);
+      } else {
+        setRemindStatus(`Reminder sent to ${employee.name}.`);
+      }
+      await load(); // refresh the "last reminder" column
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send reminder");
+    } finally {
+      setRemindingId(null);
     }
   }
 
@@ -358,6 +387,60 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
         <span className="hm-legend-item">
           <span className="hm-swatch empty" /> No record
         </span>
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Clock-in reminders</h3>
+        <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
+          A reminder email is sent automatically on weekdays to anyone who hasn't clocked in for the
+          last 3 working days. You can also send one to a specific person here, like a payslip.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Last reminder</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedEmployees.map((emp) => (
+              <tr key={emp.id}>
+                <td>{emp.name}</td>
+                <td>
+                  {emp.last_attendance_reminder_at ? (
+                    <>
+                      {formatDate(emp.last_attendance_reminder_at)}
+                      <span className="muted" style={{ marginLeft: 6, fontSize: 12 }}>
+                        {emp.last_attendance_reminder_kind === "manual" ? "sent by hand" : "automatic"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="muted">Never</span>
+                  )}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    disabled={remindingId === emp.id || reminding || !emp.email}
+                    title={emp.email || "No email address on file"}
+                    onClick={() => sendReminderTo(emp)}
+                  >
+                    {remindingId === emp.id ? "Sending…" : "Send reminder"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {sortedEmployees.length === 0 && (
+              <tr>
+                <td colSpan={3} className="muted">
+                  No employees.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {editing && (

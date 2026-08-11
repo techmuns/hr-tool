@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
@@ -9,24 +9,22 @@ import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
 import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
-import { Profile } from "../employee/Profile";
-import { LeaveForm } from "../employee/LeaveForm";
-import { ReimbursementRequest } from "../employee/ReimbursementRequest";
-import { Payslips } from "../employee/Payslips";
 import { getSession } from "../session";
 
-export function AdminDashboard() {
+/**
+ * `topbarExtra` is the view switcher AdminArea (App.tsx) drops into the topbar
+ * so an admin can flip into the employee-screen preview and back. When it's
+ * absent the topbar falls back to the plain "Founder view"/"HR view" label.
+ */
+export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
   const tier = getSession()?.tier;
   const isHR = tier === "hr";
   const isFounder = tier === "founder";
 
-  // The self-service "Employee view" — clock in/out, own attendance, profile,
-  // leave, reimbursements and payslips — is available to both HR and founders
-  // now, so an admin can use the app as an employee too (it supersedes the old
-  // HR-only "My attendance" tab, which only had the clock and working days).
-  // Founders see feedback (and only founders); HR doesn't.
+  // HR clocks in (and only HR); founders don't. Founders see feedback (and only
+  // founders); HR doesn't.
   const views = [
-    { key: "me", label: "Employee view" },
+    ...(isHR ? [{ key: "home", label: "My attendance" }] : []),
     { key: "attendance", label: "Attendance" },
     { key: "employees", label: "Employees" },
     // Payroll covers payslips and the adjustments that feed them — one cycle,
@@ -37,9 +35,7 @@ export function AdminDashboard() {
     { key: "chat", label: "Chat" },
   ];
 
-  // HR lands on their own Employee view (as before); founders keep landing on
-  // the org-wide Attendance grid they manage.
-  const [view, setView] = useState(isHR ? "me" : "attendance");
+  const [view, setView] = useState(isHR ? "home" : "attendance");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
   // Set when "Remove employee" offers to send a leaving certificate first —
   // switches to this tab with that person already selected in the form.
@@ -55,21 +51,19 @@ export function AdminDashboard() {
       <div className="topbar">
         <h1>HR Tool — Admin</h1>
         <div className="topbar-actions">
-          <span className="who">{tier === "founder" ? "Founder view" : "HR view"}</span>
+          {topbarExtra ?? (
+            <span className="who">{tier === "founder" ? "Founder view" : "HR view"}</span>
+          )}
           <ThemeToggle />
         </div>
       </div>
       <div className="layout">
         <Nav items={views} active={view} onSelect={setView} />
         <div className="content">
-          {view === "me" && (
+          {isHR && view === "home" && (
             <>
               <ClockCard onChange={() => setAttendanceRefresh((n) => n + 1)} />
               <WorkingDays refreshSignal={attendanceRefresh} />
-              <Profile />
-              <LeaveForm onMarked={() => setAttendanceRefresh((n) => n + 1)} />
-              <ReimbursementRequest />
-              <Payslips />
             </>
           )}
           {view === "attendance" && <AttendanceTable onGoToCertificates={goToCertificates} />}

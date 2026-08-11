@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { ClockCard } from "./ClockCard";
@@ -19,7 +19,12 @@ const VIEWS = [
   { key: "chat", label: "Chat with HR" },
 ];
 
-export function EmployeeDashboard() {
+/**
+ * `topbarExtra` is only passed when an admin is previewing this screen through
+ * AdminArea's view switcher (App.tsx) — it renders that switcher in the topbar
+ * so they can flip back. A real employee gets nothing extra.
+ */
+export function EmployeeDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
   const [view, setView] = useState("home");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
   const [employee, setEmployee] = useState<Employee | null>(null);
@@ -41,6 +46,7 @@ export function EmployeeDashboard() {
       <div className="topbar">
         <h1>HR Tool</h1>
         <div className="topbar-actions">
+          {topbarExtra}
           {employee && (
             <span className="who">
               {employee.name}

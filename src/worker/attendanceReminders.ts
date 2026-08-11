@@ -26,17 +26,91 @@ import { escapeHtml } from "./htmlEscape";
 /** How many recent working days with no clock-in trigger a reminder. */
 const ABSENCE_THRESHOLD = 3;
 
-interface ReminderCandidate {
+interface ReminderRecipient {
   id: number;
   name: string;
   email: string;
+}
+
+interface ReminderCandidate extends ReminderRecipient {
   last_attendance_reminder_at: string | null;
 }
+
+type ReminderKind = "auto" | "manual";
 
 export interface ReminderRunResult {
   skipped: "weekend" | null;
   sent: string[];
   failed: { name: string; error: string }[];
+}
+
+/** UTC date ("YYYY-MM-DD") for `now`, matching how work_date is stored. */
+function utcDate(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/**
+ * Email one person their reminder and record that we did — the date, and
+ * whether it was an automatic (cron) or manual (HR) send. Throws if the email
+ * fails, so the caller can report it and, crucially, NOT stamp the row (an
+ * un-sent reminder must stay un-recorded so it's retried).
+ */
+async function deliverReminder(
+  env: Bindings,
+  emp: ReminderRecipient,
+  kind: ReminderKind,
+  date: string,
+): Promise<void> {
+  await sendRawEmail(env, {
+    email: emp.email,
+    subject: `Reminder: please clock in on the ${COMPANY_NAME} HR portal`,
+    html: reminderHtml(emp.name),
+  });
+  await env.DB.prepare(
+    "UPDATE employees SET last_attendance_reminder_at = ?, last_attendance_reminder_kind = ? WHERE id = ?",
+  )
+    .bind(date, kind, emp.id)
+    .run();
+}
+
+/**
+ * Send a reminder to specific people on demand — HR's per-employee "Send
+ * reminder" (like the payslip per-row send). Unlike the scheduled pass this
+ * ignores the 3-day threshold and the per-streak de-dup: HR picked them, so we
+ * send. Recorded as a manual reminder.
+ */
+export async function sendRemindersToEmployees(
+  env: Bindings,
+  ids: number[],
+): Promise<ReminderRunResult> {
+  const result: ReminderRunResult = { skipped: null, sent: [], failed: [] };
+  const today = utcDate(new Date());
+
+  for (const id of ids) {
+    const emp = await env.DB.prepare(
+      "SELECT id, name, email FROM employees WHERE id = ?",
+    )
+      .bind(id)
+      .first<ReminderRecipient>();
+    if (!emp) {
+      result.failed.push({ name: `#${id}`, error: "Employee not found" });
+      continue;
+    }
+    if (!emp.email) {
+      result.failed.push({ name: emp.name, error: "No email address on file" });
+      continue;
+    }
+    try {
+      await deliverReminder(env, emp, "manual", today);
+      result.sent.push(emp.name);
+    } catch (err) {
+      const error = err instanceof Error ? err.message : "Send failed";
+      console.error(`Attendance reminder failed for ${emp.name}:`, error);
+      result.failed.push({ name: emp.name, error });
+    }
+  }
+
+  return result;
 }
 
 export interface ReminderOptions {
@@ -67,7 +141,9 @@ export async function runAttendanceReminders(
     return result;
   }
 
-  const today = now.toISOString().slice(0, 10);
+  // The cron is the automatic sender; an HR-triggered bulk run is a manual one.
+  const kind: ReminderKind = opts.manual ? "manual" : "auto";
+  const today = utcDate(now);
   const targetDays = recentBusinessDaysBefore(today, ABSENCE_THRESHOLD);
 
   // The same population the admin attendance grid tracks (see AttendanceTable):
@@ -113,16 +189,7 @@ export async function runAttendanceReminders(
     if (alreadyReminded) continue;
 
     try {
-      await sendRawEmail(env, {
-        email: emp.email,
-        subject: `Reminder: please clock in on the ${COMPANY_NAME} HR portal`,
-        html: reminderHtml(emp.name),
-      });
-      await env.DB.prepare(
-        "UPDATE employees SET last_attendance_reminder_at = ? WHERE id = ?",
-      )
-        .bind(today, emp.id)
-        .run();
+      await deliverReminder(env, emp, kind, today);
       result.sent.push(emp.name);
     } catch (err) {
       const error = err instanceof Error ? err.message : "Send failed";

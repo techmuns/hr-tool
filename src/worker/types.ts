@@ -30,6 +30,10 @@ export interface Employee {
    */
   team_id: number | null;
   job_title: string;
+  /** UTC date ("YYYY-MM-DD") we last emailed a clock-in reminder, or null. */
+  last_attendance_reminder_at: string | null;
+  /** How that reminder was sent: 'auto' (weekday cron) or 'manual' (HR). */
+  last_attendance_reminder_kind: "auto" | "manual" | null;
 }
 
 export interface EmployeeDetail {
