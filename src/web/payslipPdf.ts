@@ -1,4 +1,3 @@
-import { jsPDF } from "jspdf";
 import { payslipModel, rupeesPlain, PAYSLIP_COLORS } from "../worker/payslip";
 import { MUNSHOT_LOGO_DATA_URI } from "../worker/munshotLogo";
 import type { PayslipField, PayslipRow } from "../worker/payslip";
@@ -27,7 +26,10 @@ interface CellOpts {
  * the footer note. Amounts use plain numbers (no glyph) under an "Amount (Rs.)"
  * header, since jsPDF's built-in fonts can't render the rupee sign.
  */
-export function exportPayslipPdf(r: PayslipRow): void {
+export async function exportPayslipPdf(r: PayslipRow): Promise<void> {
+  // jsPDF is heavy (~hundreds of KB) and only needed on a download click, so it
+  // is code-split out of the main bundle and loaded on demand here.
+  const { jsPDF } = await import("jspdf");
   const m = payslipModel(r);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const X0 = MARGIN;

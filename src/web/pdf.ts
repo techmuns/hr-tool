@@ -1,4 +1,3 @@
-import { jsPDF } from "jspdf";
 import { formatDate } from "./date";
 import { formatRupeesPlain } from "./money";
 import { cycleLabel } from "../worker/payslip";
@@ -22,7 +21,9 @@ const COLUMNS: Column[] = [
 const MARGIN = 14;
 const ROW_HEIGHT = 8;
 
-export function exportPayrollPdf(period: string, rows: PayrollWithName[]) {
+export async function exportPayrollPdf(period: string, rows: PayrollWithName[]) {
+  // jsPDF is loaded on demand (code-split) so it stays out of the main bundle.
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageHeight = doc.internal.pageSize.getHeight();
 

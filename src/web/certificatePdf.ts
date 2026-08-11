@@ -1,4 +1,3 @@
-import { jsPDF } from "jspdf";
 import { formatDate } from "./date";
 import { COMPANY_NAME, BRAND_COLORS } from "../worker/brand";
 import { CERTIFICATE_TYPE_LABEL } from "../worker/certificate";
@@ -21,7 +20,9 @@ const INSET = 6;
  * meant to be printed or attached to an application, and those don't survive
  * print anyway. See payslipPdf.ts for the same reasoning applied to payslips.
  */
-export function exportCertificatePdf(cert: Certificate): void {
+export async function exportCertificatePdf(cert: Certificate): Promise<void> {
+  // jsPDF is loaded on demand (code-split) so it stays out of the main bundle.
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   doc.setFont("helvetica", "normal");
   let y = MARGIN;
