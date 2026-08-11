@@ -20,6 +20,7 @@ export type {
   ChatMessage,
   Payroll,
   PayrollWithName,
+  AdminPayrollRow,
   Reimbursement,
   ReimbursementWithName,
   Deduction,

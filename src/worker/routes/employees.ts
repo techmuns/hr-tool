@@ -252,7 +252,7 @@ function normalizeWorkMode(value: unknown, fallback: WorkMode): WorkMode {
 }
 
 function normalizeEmploymentType(value: unknown, fallback: EmploymentType): EmploymentType {
-  return value === "employee" || value === "freelancer" ? value : fallback;
+  return value === "employee" || value === "freelancer" || value === "intern" ? value : fallback;
 }
 
 app.post("/employees", requireAdmin, async (c) => {

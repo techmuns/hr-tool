@@ -253,6 +253,12 @@ export interface PayslipModel {
 
 const NA = "N.A.";
 
+const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
+  employee: "Full Time",
+  freelancer: "Freelancer",
+  intern: "Intern",
+};
+
 /**
  * The single source of truth for what a payslip shows, shared by the emailed
  * HTML (payslipHtml, below) and the downloadable PDF (../web/payslipPdf.ts) so
@@ -266,7 +272,7 @@ export function payslipModel(r: PayslipRow): PayslipModel {
 
   const fields: PayslipField[] = [
     { label: "Employee Name", value: r.employee_name },
-    { label: "Employee Type", value: r.employment_type === "freelancer" ? "Freelancer" : "Full Time" },
+    { label: "Employee Type", value: EMPLOYMENT_TYPE_LABEL[r.employment_type] ?? "Full Time" },
     { label: "Employee Code", value: `EMP${String(r.employee_id).padStart(4, "0")}` },
     { label: "Designation", value: r.job_title || NA },
     { label: "Duration", value: cycleLabel(r.period) },

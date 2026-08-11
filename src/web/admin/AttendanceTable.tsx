@@ -37,12 +37,44 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
   leave: "Leave",
 };
 
-const STATUS_OPTIONS: AttendanceStatus[] = ["present", "absent", "leave"];
+/**
+ * The options in the cell editor. "In office" is a present day flagged
+ * in_office — HR converts a normal (remote) present day into an in-office one,
+ * which the payroll tab then totals. The plain "Present" clears the flag.
+ */
+interface CellOption {
+  key: string;
+  label: string;
+  status: AttendanceStatus;
+  in_office: boolean;
+  /** Which swatch colour to show — reuses the status swatch classes. */
+  swatch: AttendanceStatus;
+}
+const CELL_OPTIONS: CellOption[] = [
+  { key: "present", label: "Present (remote)", status: "present", in_office: false, swatch: "present" },
+  { key: "in_office", label: "In office", status: "present", in_office: true, swatch: "present" },
+  { key: "absent", label: "Not clocked in", status: "absent", in_office: false, swatch: "absent" },
+  { key: "leave", label: "Leave", status: "leave", in_office: false, swatch: "leave" },
+];
+
+/** The label a cell shows, distinguishing an in-office present day. */
+function cellLabel(cell: { status: AttendanceStatus; in_office: boolean }): string {
+  if (cell.status === "present" && cell.in_office) return "In office";
+  return STATUS_LABEL[cell.status];
+}
+
+/** True when a cell matches an editor option (present splits on the flag). */
+function isCurrentOption(cell: DayCell | null, opt: CellOption): boolean {
+  if (!cell) return false;
+  if (opt.status !== cell.status) return false;
+  return opt.status === "present" ? Boolean(cell.in_office) === opt.in_office : true;
+}
 
 interface DayCell {
   status: AttendanceStatus;
   clock_in: string | null;
   clock_out: string | null;
+  in_office: boolean;
 }
 
 interface Editing {
@@ -102,6 +134,7 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
         status: row.status,
         clock_in: row.clock_in,
         clock_out: row.clock_out,
+        in_office: Boolean(row.in_office),
       });
     }
     return map;
@@ -213,7 +246,7 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
     }
   }
 
-  async function setStatus(status: AttendanceStatus) {
+  async function setCell(status: AttendanceStatus, inOffice: boolean) {
     if (!editing) return;
     setSaving(true);
     setError(null);
@@ -222,6 +255,7 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
         employee_id: editing.employee.id,
         work_date: dayKey(month, editing.day),
         status,
+        in_office: inOffice,
         // preserve any recorded clock times through a status change
         clock_in: editing.cell?.clock_in ?? null,
         clock_out: editing.cell?.clock_out ?? null,
@@ -319,8 +353,9 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
                     const onOrAfterJoin = dateStr >= emp.date_of_joining;
                     const isSyntheticAbsent = !cell && started && onOrAfterJoin;
                     const cls = cell?.status ?? (isSyntheticAbsent ? "absent" : "empty");
+                    const officeCls = cell?.status === "present" && cell.in_office ? " in-office" : "";
                     const title = cell
-                      ? `${emp.name} — ${dateStr}: ${STATUS_LABEL[cell.status]} (click to change)`
+                      ? `${emp.name} — ${dateStr}: ${cellLabel(cell)} (click to change)`
                       : isSyntheticAbsent
                         ? `${emp.name} — ${dateStr}: Not clocked in (click to set)`
                         : `${emp.name} — ${dateStr}: no record (click to set)`;
@@ -328,13 +363,13 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
                       <td key={day}>
                         <button
                           type="button"
-                          className={`hm-cell ${cls}`}
+                          className={`hm-cell ${cls}${officeCls}`}
                           title={title}
                           onClick={(e) => openEditor(e, emp, day, cell)}
                         >
                           {cell ? (
                             <>
-                              <span className="hm-status-label">{STATUS_LABEL[cell.status]}</span>
+                              <span className="hm-status-label">{cellLabel(cell)}</span>
                               {cell.status === "present" ? (
                                 <span className="hm-times">
                                   <span>
@@ -450,19 +485,22 @@ export function AttendanceTable({ onGoToCertificates }: { onGoToCertificates: (e
             <div className="hm-menu-head">
               {editing.employee.name} · {dayKey(month, editing.day)}
             </div>
-            {STATUS_OPTIONS.map((status) => (
-              <button
-                key={status}
-                type="button"
-                className={`hm-menu-item ${editing.cell?.status === status ? "current" : ""}`}
-                disabled={saving}
-                onClick={() => setStatus(status)}
-              >
-                <span className={`hm-swatch ${status}`} />
-                {STATUS_LABEL[status]}
-                {editing.cell?.status === status && <span className="hm-menu-check">✓</span>}
-              </button>
-            ))}
+            {CELL_OPTIONS.map((opt) => {
+              const current = isCurrentOption(editing.cell, opt);
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  className={`hm-menu-item ${current ? "current" : ""}`}
+                  disabled={saving}
+                  onClick={() => setCell(opt.status, opt.in_office)}
+                >
+                  <span className={`hm-swatch ${opt.swatch}`} />
+                  {opt.label}
+                  {current && <span className="hm-menu-check">✓</span>}
+                </button>
+              );
+            })}
           </div>
         </>
       )}

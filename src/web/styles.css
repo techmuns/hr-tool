@@ -707,6 +707,11 @@ thead .hm-name {
 .hm-cell.present .hm-status-label {
   color: var(--present);
 }
+/* In-office present day: same green, but a full ring instead of the left bar so
+   office days stand out from remote-present ones at a glance. */
+.hm-cell.present.in-office {
+  box-shadow: inset 0 0 0 2px var(--present);
+}
 
 /* "Not clocked in" (absent status) = yellow */
 .hm-cell.absent {

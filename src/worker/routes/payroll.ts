@@ -3,9 +3,9 @@ import type { AppEnv } from "../auth";
 import { requireAdmin } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payslipHtml, payslipSubject } from "../payslip";
+import { payslipHtml, payslipSubject, payCycle } from "../payslip";
 import { syncPayroll } from "../payrollCalc";
-import type { PayrollWithName } from "../types";
+import type { AdminPayrollRow } from "../types";
 
 const app = new Hono<AppEnv>();
 
@@ -22,15 +22,25 @@ app.get("/admin/payroll", async (c) => {
   // alone — see syncPayroll.
   await syncPayroll(c.env.DB, period);
 
+  // Count the cycle's present / in-office days live from attendance (11th–10th
+  // window), so the payroll tab can show the in-office vs WFH split per person.
+  const cycle = payCycle(period);
   const rows = await c.env.DB.prepare(
     `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title,
-            e.employment_type, e.date_of_joining, e.location FROM payroll p
+            e.employment_type, e.date_of_joining, e.location, e.work_mode,
+            (SELECT COUNT(*) FROM attendance a
+               WHERE a.employee_id = p.employee_id AND a.status = 'present'
+                 AND a.work_date BETWEEN ? AND ?) AS present_days,
+            (SELECT COUNT(*) FROM attendance a
+               WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.in_office = 1
+                 AND a.work_date BETWEEN ? AND ?) AS in_office_days
+     FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`
   )
-    .bind(period)
-    .all<PayrollWithName>();
+    .bind(cycle.start, cycle.end, cycle.start, cycle.end, period)
+    .all<AdminPayrollRow>();
 
   return c.json(rows.results);
 });

@@ -9,7 +9,7 @@ import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate } from "../../worker/payslip";
 import { AdjustmentsSection } from "./Adjustments";
-import type { CycleAdjustments, PayrollWithName } from "../types";
+import type { AdminPayrollRow, CycleAdjustments } from "../types";
 
 interface EmailResult {
   sent: string[];
@@ -32,7 +32,7 @@ interface EmailResult {
  */
 export function Payroll() {
   const [period, setPeriod] = useState(currentMonth());
-  const [rows, setRows] = useState<PayrollWithName[]>([]);
+  const [rows, setRows] = useState<AdminPayrollRow[]>([]);
   const [adjustments, setAdjustments] = useState<CycleAdjustments | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +60,7 @@ export function Payroll() {
     setLoading(true);
     setError(null);
     Promise.all([
-      api.get<PayrollWithName[]>(`/admin/payroll?period=${period}`, { force: true }),
+      api.get<AdminPayrollRow[]>(`/admin/payroll?period=${period}`, { force: true }),
       api.get<CycleAdjustments>(`/admin/adjustments?period=${period}`, { force: true }),
     ])
       .then(([payroll, adj]) => {
@@ -258,6 +258,7 @@ export function Payroll() {
             <th>Base Salary</th>
             <th>Reimbursements</th>
             <th>Paid Days</th>
+            <th title="Present days worked in-office vs remotely this cycle (in-office & hybrid staff)">Office / WFH</th>
             <th>Deductions</th>
             <th>Net Pay</th>
             <th>Paid</th>
@@ -290,6 +291,22 @@ export function Payroll() {
               <td>{formatINR(row.base_salary)}</td>
               <td>{formatINR(row.reimbursements)}</td>
               <td>{row.paid_days}</td>
+              <td>
+                {row.work_mode === "in-office" || row.work_mode === "hybrid" ? (
+                  <span
+                    title={`${row.in_office_days} in-office · ${row.present_days - row.in_office_days} WFH of ${row.present_days} present days`}
+                  >
+                    <b>{row.in_office_days}</b> office
+                    <div className="muted" style={{ fontSize: 12 }}>
+                      {row.present_days - row.in_office_days} WFH · {row.present_days} total
+                    </div>
+                  </span>
+                ) : (
+                  <span className="muted" title="Remote employee">
+                    —
+                  </span>
+                )}
+              </td>
               <td
                 title={`Unpaid leave ${formatINR(row.leave_deductions)} · manual ${formatINR(row.other_deductions)}`}
               >
@@ -364,7 +381,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={10} className="muted">
+              <td colSpan={11} className="muted">
                 {loading ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>

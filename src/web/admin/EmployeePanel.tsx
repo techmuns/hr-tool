@@ -323,6 +323,7 @@ export function EmployeePanel({
                   >
                     <option value="employee">Employee</option>
                     <option value="freelancer">Freelancer</option>
+                    <option value="intern">Intern</option>
                   </select>
                   {form.employment_type === "freelancer" && (
                     <p className="field-hint">Freelancers are excluded from attendance.</p>

@@ -107,6 +107,8 @@ interface AdminAttendanceBody {
   status?: AttendanceStatus;
   clock_in?: string | null;
   clock_out?: string | null;
+  /** 1 marks a present day as worked in-office; ignored unless status is present. */
+  in_office?: boolean;
 }
 
 app.post("/admin/attendance", requireAdmin, async (c) => {
@@ -118,14 +120,18 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
     return c.json({ error: "employee_id and work_date are required" }, 400);
   }
   const status: AttendanceStatus = body.status ?? "present";
+  // in-office only means anything for a present day; force it off otherwise so a
+  // day flipped to leave/absent doesn't keep counting as an office day.
+  const inOffice = status === "present" && body.in_office ? 1 : 0;
 
   await c.env.DB.prepare(
-    `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status, in_office)
+     VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT (employee_id, work_date)
-     DO UPDATE SET clock_in = excluded.clock_in, clock_out = excluded.clock_out, status = excluded.status`
+     DO UPDATE SET clock_in = excluded.clock_in, clock_out = excluded.clock_out,
+                   status = excluded.status, in_office = excluded.in_office`
   )
-    .bind(body.employee_id, body.work_date, body.clock_in ?? null, body.clock_out ?? null, status)
+    .bind(body.employee_id, body.work_date, body.clock_in ?? null, body.clock_out ?? null, status, inOffice)
     .run();
 
   const row = await c.env.DB.prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")

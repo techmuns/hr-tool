@@ -80,6 +80,7 @@ export function EmployeeDirectory({ onGoToCertificates }: { onGoToCertificates: 
             <option value="">All</option>
             <option value="employee">Employees</option>
             <option value="freelancer">Freelancers</option>
+            <option value="intern">Interns</option>
           </select>
         </div>
       </div>
@@ -101,9 +102,9 @@ export function EmployeeDirectory({ onGoToCertificates }: { onGoToCertificates: 
                 <button type="button" className="hm-name-btn" onClick={() => setPanelTarget(emp.id)}>
                   {emp.name}
                 </button>
-                {emp.employment_type === "freelancer" && (
+                {emp.employment_type !== "employee" && (
                   <span style={{ marginLeft: 6 }}>
-                    <Tag value="freelancer" />
+                    <Tag value={emp.employment_type} />
                   </span>
                 )}
               </td>

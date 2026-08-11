@@ -1,7 +1,7 @@
 export type WorkMode = "wfh" | "in-office" | "hybrid";
 export type EmployeeRole = "employee" | "admin";
 export type Tier = "employee" | "hr" | "founder";
-export type EmploymentType = "employee" | "freelancer";
+export type EmploymentType = "employee" | "freelancer" | "intern";
 export type AttendanceStatus = "present" | "absent" | "leave";
 export type LeaveType = "paid" | "unpaid";
 export type LeaveStatus = "pending" | "approved" | "rejected";
@@ -128,6 +128,8 @@ export interface Attendance {
   clock_in: string | null;
   clock_out: string | null;
   status: AttendanceStatus;
+  /** 1 when a present day was worked in-office rather than remotely. 0 | 1. */
+  in_office: number;
 }
 
 export interface AttendanceWithName extends Attendance {
@@ -201,6 +203,17 @@ export interface PayrollWithName extends Payroll {
   employment_type: EmploymentType;
   date_of_joining: string;
   location: string;
+}
+
+/**
+ * A payroll row as the admin Payroll tab reads it: the payslip fields plus the
+ * employee's work mode and the cycle's attendance split — how many present days
+ * were in-office vs remote — counted live from attendance for the cycle window.
+ */
+export interface AdminPayrollRow extends PayrollWithName {
+  work_mode: WorkMode;
+  present_days: number;
+  in_office_days: number;
 }
 
 export type CertificateType = "leaving" | "lor";
