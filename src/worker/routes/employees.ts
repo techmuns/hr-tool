@@ -126,7 +126,8 @@ app.get("/reimbursements/me", async (c) => {
 app.get("/payroll/me", async (c) => {
   const employee = c.get("employee");
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title
+    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title,
+            e.employment_type, e.date_of_joining, e.location
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.employee_id = ?

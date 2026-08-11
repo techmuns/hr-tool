@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Login } from "./components/Login";
 import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
@@ -51,7 +51,10 @@ function AdminArea({ tier }: { tier: Tier }) {
   );
 }
 
-function HrApp({ host }: { host: SessionContext }) {
+// Memoized so a host message that changes only market/ticker context — not the
+// session — doesn't re-render the entire dashboard. Paired with the stable
+// session reference from useHostContext (see hooks/useHostContext.ts).
+const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
   const hasToken = !!host.token;
   const [session, setSessionState] = useState(getSession());
   // If the Munshot host already told us who the user is, resolve that identity
@@ -123,7 +126,7 @@ function HrApp({ host }: { host: SessionContext }) {
   }
 
   return <EmployeeDashboard />;
-}
+});
 
 export default function App() {
   const { session } = useHostContext();

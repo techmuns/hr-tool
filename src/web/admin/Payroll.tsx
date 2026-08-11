@@ -38,6 +38,9 @@ export function Payroll() {
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [paidBusy, setPaidBusy] = useState(false);
+  // Which single person's paid state is in flight (per-row "Mark paid"),
+  // separate from the cycle-wide `paidBusy` above.
+  const [paidBusyId, setPaidBusyId] = useState<number | null>(null);
   const [emailingIds, setEmailingIds] = useState<number[]>([]);
   const [result, setResult] = useState<EmailResult | null>(null);
   // Who gets a payslip on the next bulk send. Seeded from the loaded rows, then
@@ -136,6 +139,20 @@ export function Payroll() {
       setError(err instanceof Error ? err.message : "Failed to update payment status");
     } finally {
       setPaidBusy(false);
+    }
+  }
+
+  // Per-row "Mark paid" / "Undo", settling just this one person for the cycle.
+  async function setEmployeePaid(employeeId: number, paid: boolean) {
+    setPaidBusyId(employeeId);
+    setError(null);
+    try {
+      await api.post("/admin/payroll/paid", { period, paid, employee_id: employeeId });
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update payment status");
+    } finally {
+      setPaidBusyId(null);
     }
   }
 
@@ -243,6 +260,7 @@ export function Payroll() {
             <th>Paid Days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
+            <th>Paid</th>
             <th>Payslip</th>
             <th></th>
           </tr>
@@ -278,6 +296,34 @@ export function Payroll() {
                 {formatINR(row.deductions)}
               </td>
               <td>{formatINR(row.net_pay)}</td>
+              <td>
+                {row.paid_at ? (
+                  <>
+                    <span className="muted" style={{ fontSize: 12 }} title={`Paid ${formatDate(row.paid_at)}`}>
+                      Paid {formatDate(row.paid_at)}
+                    </span>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      style={{ marginLeft: 8 }}
+                      disabled={busy || paidBusyId === row.employee_id}
+                      title="Reopen this person's pay for the cycle"
+                      onClick={() => setEmployeePaid(row.employee_id, false)}
+                    >
+                      Undo
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={busy || paidBusyId === row.employee_id}
+                    onClick={() => setEmployeePaid(row.employee_id, true)}
+                  >
+                    {paidBusyId === row.employee_id ? "Marking…" : "Mark paid"}
+                  </button>
+                )}
+              </td>
               <td>
                 <button
                   type="button"
@@ -318,7 +364,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={9} className="muted">
+              <td colSpan={10} className="muted">
                 {loading ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>

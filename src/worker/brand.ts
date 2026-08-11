@@ -8,6 +8,15 @@
 
 export const COMPANY_NAME = "Munshot";
 
+/**
+ * Registered office address and business unit printed on the payslip header,
+ * under the company name. We don't store these per-company anywhere, so they
+ * live here as editable constants — set them to the real values and they show
+ * on every payslip; leave them blank and the payslip simply omits the line.
+ */
+export const COMPANY_ADDRESS = "";
+export const BUSINESS_UNIT = "";
+
 // Matches the Munshot mark: a gold "M" on near-black navy. Two golds, not one —
 // GOLD reads clearly on a dark background, but that same value is too light
 // to pass as body text on white, so GOLD_DEEP stands in there.

@@ -1,160 +1,184 @@
 import { jsPDF } from "jspdf";
-import { formatDate } from "./date";
-import { formatRupeesPlain } from "./money";
-import { COMPANY_NAME, PAYSLIP_COLORS, cycleLabel, payDueDate } from "../worker/payslip";
+import { payslipModel, rupeesPlain, PAYSLIP_COLORS } from "../worker/payslip";
 import { MUNSHOT_LOGO_DATA_URI } from "../worker/munshotLogo";
-import type { PayslipRow } from "../worker/payslip";
+import type { PayslipField, PayslipRow } from "../worker/payslip";
 
-const { NAVY, GOLD, GOLD_DEEP, GOLD_TINT, INK, MUTED, BORDER, DEDUCT } = PAYSLIP_COLORS;
+const { INK, MUTED } = PAYSLIP_COLORS;
+const BORDER = "#c2c6cc";
+const FILL = "#f2f3f5";
 
-const MARGIN = 20;
-const CARD_W = 210 - 2 * MARGIN; // A4 width minus both margins
-const INSET = 6; // left/right padding inside the card, mirroring the email card's own gutter
+const MARGIN = 12;
+const W = 210 - 2 * MARGIN; // A4 width minus both margins
+
+interface CellOpts {
+  bold?: boolean;
+  size?: number;
+  color?: string;
+  align?: "left" | "right" | "center";
+  fill?: string;
+}
 
 /**
- * "Download PDF" for a single payslip — the same card that goes out by email
- * (payslipHtml in ../worker/payslip.ts), redrawn with jsPDF's vector drawing
- * calls instead of HTML, since jsPDF has no HTML renderer of its own. Same
- * content, same order, same colors (PAYSLIP_COLORS is the one place those are
- * defined) and the same conditional lines — reimbursements only if any,
- * leave/manual deductions only if any, "No deductions this period" otherwise —
- * so a downloaded copy never disagrees with what was emailed.
- *
- * Laid out on a full A4 page with generous margins rather than packed
- * edge-to-edge: this is meant to be printed or attached to a loan/visa
- * application, and corners this simple (flat rectangles, no rounding) print
- * cleanly on plain paper where the emailed HTML card's rounded corners and
- * translucent badge fill would not survive rendering, let alone add anything.
+ * "Download PDF" for a single payslip — the same bordered salary slip that goes
+ * out by email (payslipHtml in ../worker/payslip.ts), redrawn with jsPDF since
+ * it has no HTML renderer. Both consume payslipModel() so the two never drift:
+ * the company header, the titled slip line, the two-column employee grid, the
+ * earnings/deductions table with A/B/net-pay rows and the amount in words, and
+ * the footer note. Amounts use plain numbers (no glyph) under an "Amount (Rs.)"
+ * header, since jsPDF's built-in fonts can't render the rupee sign.
  */
 export function exportPayslipPdf(r: PayslipRow): void {
+  const m = payslipModel(r);
   const doc = new jsPDF({ unit: "mm", format: "a4" });
-  doc.setFont("helvetica", "normal");
-  let y = MARGIN;
+  const X0 = MARGIN;
+  doc.setLineWidth(0.2);
 
-  // --- Header --------------------------------------------------------------
-  const headerH = 34;
-  doc.setFillColor(NAVY);
-  doc.rect(MARGIN, y, CARD_W, headerH, "F");
+  const box = (x: number, y: number, w: number, h: number, fill?: string) => {
+    if (fill) {
+      doc.setFillColor(fill);
+      doc.rect(x, y, w, h, "F");
+    }
+    doc.setDrawColor(BORDER);
+    doc.rect(x, y, w, h, "S");
+  };
 
-  doc.addImage(MUNSHOT_LOGO_DATA_URI, "PNG", MARGIN + INSET, y + 7, 13, 13);
+  // A bordered cell with a single vertically-centred string.
+  const cell = (x: number, y: number, w: number, h: number, s: string, o: CellOpts = {}) => {
+    box(x, y, w, h, o.fill);
+    if (!s) return;
+    const p = 2.5;
+    doc.setFont("helvetica", o.bold ? "bold" : "normal");
+    doc.setFontSize(o.size ?? 9);
+    doc.setTextColor(o.color ?? INK);
+    const align = o.align ?? "left";
+    const tx = align === "right" ? x + w - p : align === "center" ? x + w / 2 : x + p;
+    doc.text(s, tx, y + h / 2, { align, baseline: "middle" });
+  };
 
-  const textX = MARGIN + INSET + 18;
-  doc.setTextColor(GOLD);
+  // A grid cell reading "Label : value" — label muted, value bold.
+  const fieldCell = (x: number, y: number, w: number, h: number, f?: PayslipField) => {
+    box(x, y, w, h);
+    if (!f) return;
+    const p = 2.5;
+    const cy = y + h / 2;
+    const labelStr = `${f.label} : `;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.6);
+    doc.setTextColor(MUTED);
+    doc.text(labelStr, x + p, cy, { baseline: "middle" });
+    const lw = doc.getTextWidth(labelStr);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(INK);
+    doc.text(f.value, x + p + lw, cy, { baseline: "middle" });
+  };
+
+  let y = 14;
+
+  // --- Header: logo cell | company info -------------------------------------
+  const headH = 26;
+  const logoW = 42;
+  box(X0, y, W, headH);
+  doc.setDrawColor(BORDER);
+  doc.line(X0 + logoW, y, X0 + logoW, y + headH); // divider
+  const logoSize = 16;
+  doc.addImage(MUNSHOT_LOGO_DATA_URI, "PNG", X0 + (logoW - logoSize) / 2, y + (headH - logoSize) / 2, logoSize, logoSize);
+
+  let infoY = y + 10;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
-  doc.text(COMPANY_NAME, textX, y + 13);
-
-  doc.setTextColor("#c9bfa3");
+  doc.setTextColor(INK);
+  doc.text(m.company.name, X0 + logoW + 4, infoY);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`Monthly Payslip · ${cycleLabel(r.period)}`, textX, y + 19);
-
-  const badgeText = (r.paid_at ? `PAID ${formatDate(r.paid_at)}` : `DUE ${formatDate(payDueDate(r.period))}`).toUpperCase();
-  doc.setFont("helvetica", "bold");
   doc.setFontSize(8);
-  const badgeW = doc.getTextWidth(badgeText) + 8;
-  const badgeY = y + 23;
-  doc.setFillColor(GOLD_DEEP);
-  doc.roundedRect(textX, badgeY, badgeW, 6.5, 3.25, 3.25, "F");
-  doc.setTextColor(GOLD_TINT);
-  doc.text(badgeText, textX + 4, badgeY + 4.5);
-
-  y += headerH + 8;
-
-  // --- Employee meta ---------------------------------------------------------
-  function metaRow(label: string, value: string) {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(MUTED);
-    doc.text(label.toUpperCase(), MARGIN + INSET, y);
-    doc.setFontSize(10);
-    doc.setTextColor(INK);
-    doc.text(value, MARGIN + CARD_W - INSET, y, { align: "right" });
-    y += 6.5;
-  }
-  metaRow("Employee", r.employee_name);
-  metaRow("Designation", r.job_title || "—");
-  metaRow("Worked Days", String(r.paid_days));
-  y += 3;
-
-  // --- Earnings / Deductions tables ------------------------------------------
-  function sectionHeader(title: string) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(MUTED);
-    doc.text(title.toUpperCase(), MARGIN + INSET, y);
-    doc.setFontSize(8);
-    doc.text("AMOUNT", MARGIN + CARD_W - INSET, y, { align: "right" });
-    y += 2;
-    doc.setDrawColor(BORDER);
-    doc.setLineWidth(0.5);
-    doc.line(MARGIN + INSET, y, MARGIN + CARD_W - INSET, y);
-    y += 6;
-  }
-
-  function lineRow(label: string, amount: number, opts: { total?: boolean; color?: string } = {}) {
-    if (opts.total) {
-      doc.setDrawColor(BORDER);
-      doc.setLineWidth(0.3);
-      doc.line(MARGIN + INSET, y - 4, MARGIN + CARD_W - INSET, y - 4);
-    }
-    doc.setFont("helvetica", opts.total ? "bold" : "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(opts.color ?? INK);
-    doc.text(label, MARGIN + INSET, y);
-    doc.text(formatRupeesPlain(amount), MARGIN + CARD_W - INSET, y, { align: "right" });
-    y += 7;
-  }
-
-  sectionHeader("Earnings");
-  lineRow("Basic Pay", r.base_salary);
-  // Only list reimbursements when there are any — an empty ₹0.00 line is noise.
-  if (r.reimbursements > 0) lineRow("Reimbursements", r.reimbursements);
-  lineRow("Total Earnings", r.base_salary + r.reimbursements, { total: true });
-  y += 4;
-
-  sectionHeader("Deductions");
-  // Leave and manually-booked deductions are listed apart: seeing one lump sum
-  // labelled "unpaid leave" when half of it was an advance recovery is exactly
-  // the sort of thing that turns into a payroll query.
-  if (r.deductions > 0) {
-    if (r.leave_deductions > 0) {
-      lineRow(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.leave_deductions, {
-        color: DEDUCT,
-      });
-    }
-    if (r.other_deductions > 0) lineRow("Other Deductions", r.other_deductions, { color: DEDUCT });
-    lineRow("Total Deductions", r.deductions, { total: true, color: DEDUCT });
-  } else {
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    doc.setTextColor(MUTED);
-    doc.text("No deductions this period.", MARGIN + INSET, y);
-    y += 7;
-  }
-  y += 6;
-
-  // --- Net pay band ------------------------------------------------------
-  const bandH = 18;
-  doc.setFillColor(GOLD_TINT);
-  doc.rect(MARGIN, y, CARD_W, bandH, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-  doc.setTextColor(GOLD_DEEP);
-  doc.text("NET PAY", MARGIN + INSET, y + bandH / 2 + 1.2, { baseline: "middle" });
-  doc.setFontSize(15);
-  doc.text(formatRupeesPlain(r.net_pay), MARGIN + CARD_W - INSET, y + bandH / 2 + 1.5, { align: "right", baseline: "middle" });
-  y += bandH + 10;
-
-  // --- Footer ------------------------------------------------------------
-  doc.setDrawColor(BORDER);
-  doc.setLineWidth(0.3);
-  doc.line(MARGIN + INSET, y, MARGIN + CARD_W - INSET, y);
-  y += 6;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
   doc.setTextColor(MUTED);
-  doc.text("This is a system generated payslip.", MARGIN + INSET, y);
+  if (m.company.address) {
+    infoY += 6;
+    doc.text(`Office Address : ${m.company.address}`, X0 + logoW + 4, infoY);
+  }
+  if (m.company.businessUnit) {
+    infoY += 4.5;
+    doc.text(`Business Unit : ${m.company.businessUnit}`, X0 + logoW + 4, infoY);
+  }
+  y += headH;
 
-  doc.save(`payslip-${r.employee_name.replace(/[^\w-]+/g, "_")}-${r.period}.pdf`);
+  // --- Title -----------------------------------------------------------------
+  const titleH = 9;
+  cell(X0, y, W, titleH, m.title, { size: 12, align: "center" });
+  y += titleH;
+
+  // --- Employee grid: two label:value pairs per row --------------------------
+  const gridH = 8;
+  const colW = W / 2;
+  for (let i = 0; i < m.fields.length; i += 2) {
+    fieldCell(X0, y, colW, gridH, m.fields[i]);
+    fieldCell(X0 + colW, y, colW, gridH, m.fields[i + 1]);
+    y += gridH;
+  }
+
+  // --- Earnings / Deductions table (4 columns) -------------------------------
+  const w1 = W * 0.3;
+  const w2 = W * 0.2;
+  const w3 = W * 0.3;
+  const w4 = W * 0.2;
+  const cx = [X0, X0 + w1, X0 + w1 + w2, X0 + w1 + w2 + w3];
+  const cw = [w1, w2, w3, w4];
+
+  const hdrH = 8;
+  cell(cx[0], y, w1 + w2, hdrH, "Earnings", { bold: true, align: "center", fill: FILL });
+  cell(cx[2], y, w3 + w4, hdrH, "Deductions", { bold: true, align: "center", fill: FILL });
+  y += hdrH;
+
+  const subH = 7;
+  cell(cx[0], y, cw[0], subH, "Components", { bold: true, size: 8, color: MUTED, fill: FILL });
+  cell(cx[1], y, cw[1], subH, "Amount (Rs.)", { bold: true, size: 8, color: MUTED, align: "right", fill: FILL });
+  cell(cx[2], y, cw[2], subH, "Common Deductions", { bold: true, size: 8, color: MUTED, fill: FILL });
+  cell(cx[3], y, cw[3], subH, "Amount (Rs.)", { bold: true, size: 8, color: MUTED, align: "right", fill: FILL });
+  y += subH;
+
+  const rowH = 7;
+  const rows = Math.max(m.earnings.length, m.deductions.length);
+  for (let i = 0; i < rows; i++) {
+    const e = m.earnings[i];
+    const d = m.deductions[i];
+    cell(cx[0], y, cw[0], rowH, e ? e.label : "");
+    cell(cx[1], y, cw[1], rowH, e ? rupeesPlain(e.amount) : "", { align: "right" });
+    cell(cx[2], y, cw[2], rowH, d ? d.label : "");
+    cell(cx[3], y, cw[3], rowH, d ? rupeesPlain(d.amount) : "", { align: "right" });
+    y += rowH;
+  }
+
+  // Gross Earning (A) | Total Deductions (B)
+  cell(cx[0], y, cw[0], rowH, "Gross Earning (A)", { bold: true });
+  cell(cx[1], y, cw[1], rowH, rupeesPlain(m.gross), { bold: true, align: "right" });
+  cell(cx[2], y, cw[2], rowH, "Total Deductions (B)", { bold: true });
+  cell(cx[3], y, cw[3], rowH, rupeesPlain(m.totalDeductions), { bold: true, align: "right" });
+  y += rowH;
+
+  // Net Pay (A - B) | (empty)
+  cell(cx[0], y, cw[0], rowH, "Net Pay (A - B)", { bold: true });
+  cell(cx[1], y, cw[1], rowH, rupeesPlain(m.netPay), { bold: true, align: "right" });
+  box(cx[2], y, cw[2] + cw[3], rowH);
+  y += rowH;
+
+  // Total Pay | amount in words (may wrap, so this row grows to fit)
+  const wordsW = cw[2] + cw[3];
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  const wordLines = doc.splitTextToSize(m.amountInWords, wordsW - 5) as string[];
+  const wordsH = Math.max(rowH, wordLines.length * 4 + 3);
+  cell(cx[0], y, cw[0], wordsH, "Total Pay", { bold: true });
+  cell(cx[1], y, cw[1], wordsH, rupeesPlain(m.netPay), { bold: true, align: "right" });
+  box(cx[2], y, wordsW, wordsH);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(INK);
+  const firstLineY = y + wordsH / 2 - ((wordLines.length - 1) * 4) / 2;
+  doc.text(wordLines, cx[2] + wordsW - 2.5, firstLineY, { align: "right", baseline: "middle" });
+  y += wordsH;
+
+  // --- Note ------------------------------------------------------------------
+  const noteH = 9;
+  cell(X0, y, W, noteH, `Note: ${m.note}`, { size: 8.5, color: MUTED, align: "center" });
+
+  doc.save(`payslip-${m.company.name}-${r.employee_name.replace(/[^\w-]+/g, "_")}-${r.period}.pdf`);
 }

@@ -23,7 +23,8 @@ app.get("/admin/payroll", async (c) => {
   await syncPayroll(c.env.DB, period);
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title FROM payroll p
+    `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title,
+            e.employment_type, e.date_of_joining, e.location FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ?
      ORDER BY e.name ASC`
@@ -35,32 +36,41 @@ app.get("/admin/payroll", async (c) => {
 });
 
 /**
- * Mark a whole cycle's dues paid (or undo it). Payroll runs in arrears — a
- * period's salaries go out on the 11th of the following month — so this is the
- * record of "we've actually transferred this month's money".
+ * Mark dues paid (or undo it). Payroll runs in arrears — a period's salaries go
+ * out on the 11th of the following month — so this is the record of "we've
+ * actually transferred this month's money".
+ *
+ * With `employee_id`, only that one person's row is settled (the per-row "Mark
+ * paid" button); without it, the whole cycle is. Either way we sync first when
+ * marking paid, since a settled row stops tracking its inputs and had better be
+ * up to date at that moment. paid_at lives per row, and syncPayroll already
+ * freezes any row whose paid_at is set, so a mix of paid and unpaid people in
+ * one cycle is fully supported.
  */
 app.post("/admin/payroll/paid", async (c) => {
   const body = await c.req
-    .json<{ period?: string; paid?: boolean }>()
-    .catch(() => ({}) as { period?: string; paid?: boolean });
+    .json<{ period?: string; paid?: boolean; employee_id?: number }>()
+    .catch(() => ({}) as { period?: string; paid?: boolean; employee_id?: number });
 
   const period = typeof body.period === "string" ? body.period : "";
   if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
   const paid = body.paid !== false; // default to marking paid
+  const employeeId = Number.isInteger(body.employee_id) ? (body.employee_id as number) : null;
 
-  // Settle against current figures, not whatever was last read: marking paid is
-  // the point after which the row stops tracking its inputs, so it had better
-  // be up to date at that moment.
   if (paid) await syncPayroll(c.env.DB, period);
 
-  const result = await c.env.DB.prepare(
-    `UPDATE payroll SET paid_at = ${paid ? "datetime('now')" : "NULL"} WHERE period = ?`
-  )
-    .bind(period)
-    .run();
+  const setClause = `paid_at = ${paid ? "datetime('now')" : "NULL"}`;
+  const result = employeeId != null
+    ? await c.env.DB.prepare(`UPDATE payroll SET ${setClause} WHERE period = ? AND employee_id = ?`)
+        .bind(period, employeeId)
+        .run()
+    : await c.env.DB.prepare(`UPDATE payroll SET ${setClause} WHERE period = ?`).bind(period).run();
 
   if (!result.meta.changes) {
-    return c.json({ error: "No payroll for that period yet — generate it first" }, 404);
+    return c.json(
+      { error: employeeId != null ? "No payroll row for that person this cycle" : "No payroll for that period yet — generate it first" },
+      404,
+    );
   }
   return c.json({ ok: true, updated: result.meta.changes });
 });
@@ -98,9 +108,10 @@ app.post("/admin/payroll/email", async (c) => {
   await syncPayroll(c.env.DB, period);
 
   const rows = await c.env.DB.prepare(
-    `SELECT p.id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
+    `SELECT p.id, p.employee_id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
             p.deductions, p.leave_deductions, p.other_deductions, p.net_pay, p.paid_at,
-            e.name AS employee_name, e.email AS employee_email, e.job_title
+            e.name AS employee_name, e.email AS employee_email, e.job_title,
+            e.employment_type, e.date_of_joining, e.location
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ? AND p.employee_id IN (${ids.map(() => "?").join(",")})

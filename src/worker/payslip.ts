@@ -23,8 +23,9 @@
  */
 
 import { MUNSHOT_LOGO_DATA_URI } from "./munshotLogo";
-import { COMPANY_NAME, BRAND_COLORS } from "./brand";
+import { COMPANY_NAME, COMPANY_ADDRESS, BUSINESS_UNIT, BRAND_COLORS } from "./brand";
 import { escapeHtml } from "./htmlEscape";
+import type { EmploymentType } from "./types";
 
 export { COMPANY_NAME };
 
@@ -130,8 +131,12 @@ export function cycleLabel(period: string): string {
 }
 
 export interface PayslipRow {
+  employee_id: number;
   employee_name: string;
   job_title: string;
+  employment_type: EmploymentType;
+  date_of_joining: string;
+  location: string;
   period: string;
   paid_days: number;
   unpaid_days: number;
@@ -146,141 +151,268 @@ export interface PayslipRow {
 }
 
 export function payslipSubject(period: string): string {
-  return `Monthly Payslip — ${cycleLabel(period)}`;
+  return `Salary Slip — ${salaryMonthLabel(period)}`;
 }
 
-function metaRow(label: string, value: string): string {
-  return `<tr>
-    <td style="padding:5px 0;font-size:12px;color:${MUTED};text-transform:uppercase;letter-spacing:.05em;">${label}</td>
-    <td style="padding:5px 0;font-size:14px;color:${INK};text-align:right;">${value}</td>
-  </tr>`;
+/** "2026-08" -> "August - 2026", the month a payslip is titled for. */
+export function salaryMonthLabel(period: string): string {
+  const [year, month] = period.split("-").map(Number);
+  if (!year || !month) return period;
+  const name = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-IN", {
+    timeZone: "UTC",
+    month: "long",
+  });
+  return `${name} - ${year}`;
 }
 
-function lineRow(label: string, amount: number, opts: { total?: boolean; color?: string } = {}): string {
-  const weight = opts.total ? "font-weight:bold;" : "";
-  const border = opts.total ? `border-top:1px solid ${BORDER};` : "";
-  const color = opts.color ?? INK;
-  return `<tr>
-    <td style="padding:8px 0;${border}${weight}font-size:14px;color:${color};">${label}</td>
-    <td style="padding:8px 0;${border}${weight}font-size:14px;color:${color};text-align:right;">${money(amount)}</td>
-  </tr>`;
+/** Whole-rupee (or rupee.paise) amount from paise, e.g. 1000000 -> "10,000.00". */
+const inrPlain = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export function rupeesPlain(paise: number): string {
+  return inrPlain.format(paise / 100);
 }
 
-function sectionHeader(title: string): string {
-  return `<tr>
-    <td colspan="2" style="padding:0 0 6px;border-bottom:2px solid ${BORDER};font-size:11px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;color:${MUTED};">${title}</td>
-  </tr>`;
+const ONES = [
+  "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven",
+  "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen",
+];
+const TENS = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+/** 0–999 in words, with the Indian "And" before a sub-hundred remainder. */
+function under1000(n: number): string {
+  const parts: string[] = [];
+  const hundreds = Math.floor(n / 100);
+  const rest = n % 100;
+  if (hundreds) parts.push(`${ONES[hundreds]} Hundred`);
+  if (rest) {
+    if (parts.length) parts.push("And");
+    parts.push(rest < 20 ? ONES[rest] : `${TENS[Math.floor(rest / 10)]}${rest % 10 ? " " + ONES[rest % 10] : ""}`);
+  }
+  return parts.join(" ");
 }
 
 /**
- * The payslip as an HTML card, for the `html` field of the Muns raw email API
- * (see ../email.ts). Renders as a single white card on a light canvas: a
- * branded header with a PAID/DUE status pill, an employee block, earnings and
- * deductions tables, and a highlighted net-pay band.
+ * A paise amount as Indian-numbering words, e.g. 176626700 ->
+ * "Seventeen Lakh Sixty Six Thousand Two Hundred And Sixty Seven Rupees Only".
+ * Handles paise as a trailing "and NN Paise" when present.
+ */
+export function rupeesInWords(paise: number): string {
+  const rupees = Math.floor(Math.abs(paise) / 100);
+  const paiseRem = Math.abs(paise) % 100;
+
+  let words: string;
+  if (rupees === 0) {
+    words = "Zero";
+  } else {
+    const crore = Math.floor(rupees / 10000000);
+    const lakh = Math.floor((rupees % 10000000) / 100000);
+    const thousand = Math.floor((rupees % 100000) / 1000);
+    const belowThousand = rupees % 1000;
+    const segs: string[] = [];
+    if (crore) segs.push(`${under1000(crore)} Crore`);
+    if (lakh) segs.push(`${under1000(lakh)} Lakh`);
+    if (thousand) segs.push(`${under1000(thousand)} Thousand`);
+    if (belowThousand) {
+      // The "And" that reads "...Thousand Two Hundred And..." only belongs when
+      // there is a higher segment before it and the remainder is under 100.
+      if (segs.length && belowThousand < 100) segs.push("And");
+      segs.push(under1000(belowThousand));
+    }
+    words = segs.join(" ");
+  }
+
+  const rupeePart = `${words} Rupee${rupees === 1 ? "" : "s"}`;
+  const paisePart = paiseRem ? ` And ${under1000(paiseRem)} Paise` : "";
+  return `${rupeePart}${paisePart} Only`;
+}
+
+export interface PayslipField {
+  label: string;
+  value: string;
+}
+/** One earnings or deductions line; `amount` is in paise. */
+export interface PayslipLine {
+  label: string;
+  amount: number;
+}
+
+export interface PayslipModel {
+  company: { name: string; address: string; businessUnit: string };
+  /** "Salary Slip for August - 2026". */
+  title: string;
+  /** Employee detail grid, rendered two pairs per row. */
+  fields: PayslipField[];
+  earnings: PayslipLine[];
+  deductions: PayslipLine[];
+  /** All in paise. */
+  gross: number;
+  totalDeductions: number;
+  netPay: number;
+  amountInWords: string;
+  note: string;
+}
+
+const NA = "N.A.";
+
+/**
+ * The single source of truth for what a payslip shows, shared by the emailed
+ * HTML (payslipHtml, below) and the downloadable PDF (../web/payslipPdf.ts) so
+ * the two can never drift. The layout mirrors a standard Indian salary slip;
+ * fields this tool doesn't track (PF, ESIC, UAN, PAN, sub-department, arrears)
+ * are shown as N.A. rather than dropped, so the format stays intact.
+ */
+export function payslipModel(r: PayslipRow): PayslipModel {
+  const daysInMonth = r.paid_days + r.unpaid_days; // company standard working days (24)
+  const status = r.paid_at ? `Paid ${dateLabel(r.paid_at)}` : `Due ${dateLabel(payDueDate(r.period))}`;
+
+  const fields: PayslipField[] = [
+    { label: "Employee Name", value: r.employee_name },
+    { label: "Employee Type", value: r.employment_type === "freelancer" ? "Freelancer" : "Full Time" },
+    { label: "Employee Code", value: `EMP${String(r.employee_id).padStart(4, "0")}` },
+    { label: "Designation", value: r.job_title || NA },
+    { label: "Duration", value: cycleLabel(r.period) },
+    { label: "Sub Department", value: NA },
+    { label: "Date of Joining", value: r.date_of_joining ? dateLabel(r.date_of_joining) : NA },
+    { label: "No. of Days in Month", value: String(daysInMonth) },
+    { label: "Working Days", value: String(r.paid_days) },
+    { label: "LOP (days)", value: String(r.unpaid_days) },
+    { label: "Provident Fund", value: NA },
+    { label: "ESIC Number", value: NA },
+    { label: "Current Office Location", value: r.location || NA },
+    { label: "Total Arrear Days", value: "0" },
+    { label: "UAN No", value: NA },
+    { label: "PAN No", value: NA },
+    { label: "Payment Status", value: status },
+  ];
+
+  const earnings: PayslipLine[] = [{ label: "Basic", amount: r.base_salary }];
+  if (r.reimbursements > 0) earnings.push({ label: "Reimbursements", amount: r.reimbursements });
+
+  const deductions: PayslipLine[] = [];
+  if (r.leave_deductions > 0) {
+    deductions.push({
+      label: `Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`,
+      amount: r.leave_deductions,
+    });
+  }
+  if (r.other_deductions > 0) deductions.push({ label: "Other Deductions", amount: r.other_deductions });
+
+  return {
+    company: { name: COMPANY_NAME, address: COMPANY_ADDRESS, businessUnit: BUSINESS_UNIT },
+    title: `Salary Slip for ${salaryMonthLabel(r.period)}`,
+    fields,
+    earnings,
+    deductions,
+    gross: r.base_salary + r.reimbursements,
+    totalDeductions: r.deductions,
+    netPay: r.net_pay,
+    amountInWords: rupeesInWords(r.net_pay),
+    note: "This is a Computer Generated Slip and does not require signature.",
+  };
+}
+
+/**
+ * The payslip as an HTML document for the `html` field of the Muns raw email
+ * API (see ../email.ts). A bordered, table-based salary slip — company header,
+ * a titled slip line, a two-column employee-details grid, an
+ * earnings/deductions table, the A/B/net-pay rows with the amount in words, and
+ * a footer note. Every rule is inlined and the layout is tables, since mail
+ * clients strip <style> and don't do flexbox/grid.
  */
 export function payslipHtml(r: PayslipRow): string {
-  const totalEarnings = r.base_salary + r.reimbursements;
-  const badge = r.paid_at ? `Paid ${dateLabel(r.paid_at)}` : `Due ${dateLabel(payDueDate(r.period))}`;
+  const m = payslipModel(r);
+  const LINE = "#c2c6cc";
+  const cell = `border:1px solid ${LINE};`;
+  const pad = "padding:7px 10px;";
+  const headFill = "background:#f2f3f5;";
 
-  const earningsRows = [
-    lineRow("Basic Pay", r.base_salary),
-    // Only list reimbursements when there are any — an empty ₹0.00 line is noise.
-    r.reimbursements > 0 ? lineRow("Reimbursements", r.reimbursements) : "",
-    lineRow("Total Earnings", totalEarnings, { total: true }),
+  const addressLines = [
+    m.company.address
+      ? `<div style="font-size:12px;color:${MUTED};margin-top:4px;"><b style="color:${INK};">Office Address :</b> ${escapeHtml(m.company.address)}</div>`
+      : "",
+    m.company.businessUnit
+      ? `<div style="font-size:12px;color:${MUTED};margin-top:2px;"><b style="color:${INK};">Business Unit :</b> ${escapeHtml(m.company.businessUnit)}</div>`
+      : "",
   ].join("");
 
-  // Leave and manually-booked deductions are listed apart: seeing one lump sum
-  // labelled "unpaid leave" when half of it was an advance recovery is exactly
-  // the sort of thing that turns into a payroll query.
-  const deductionRows =
-    r.deductions > 0
-      ? [
-          r.leave_deductions > 0
-            ? lineRow(`Unpaid Leave (${r.unpaid_days} day${r.unpaid_days === 1 ? "" : "s"})`, r.leave_deductions, {
-                color: DEDUCT,
-              })
-            : "",
-          r.other_deductions > 0 ? lineRow("Other Deductions", r.other_deductions, { color: DEDUCT }) : "",
-          lineRow("Total Deductions", r.deductions, { total: true, color: DEDUCT }),
-        ].join("")
-      : `<tr><td colspan="2" style="padding:8px 0;font-size:14px;color:${MUTED};">No deductions this period.</td></tr>`;
+  // Employee detail grid — two label:value pairs per row; pad an odd tail.
+  const fieldCell = (f?: PayslipField): string =>
+    f
+      ? `<td width="50%" style="${cell}${pad}font-size:13px;color:${MUTED};">${escapeHtml(f.label)} : <b style="color:${INK};">${escapeHtml(f.value)}</b></td>`
+      : `<td style="${cell}"></td>`;
+  const fieldRows: string[] = [];
+  for (let i = 0; i < m.fields.length; i += 2) {
+    fieldRows.push(`<tr>${fieldCell(m.fields[i])}${fieldCell(m.fields[i + 1])}</tr>`);
+  }
+
+  // Earnings | Deductions — four columns, one row per pair, shorter side padded.
+  const amt = (p: number) => rupeesPlain(p);
+  const edCell = (text: string, opts: { right?: boolean; bold?: boolean } = {}) =>
+    `<td style="${cell}${pad}font-size:13px;color:${INK};${opts.right ? "text-align:right;" : ""}${opts.bold ? "font-weight:bold;" : ""}">${text}</td>`;
+  const edRows: string[] = [];
+  const maxLen = Math.max(m.earnings.length, m.deductions.length);
+  for (let i = 0; i < maxLen; i++) {
+    const e = m.earnings[i];
+    const d = m.deductions[i];
+    edRows.push(
+      `<tr>${edCell(e ? escapeHtml(e.label) : "")}${edCell(e ? amt(e.amount) : "", { right: true })}` +
+        `${edCell(d ? escapeHtml(d.label) : "")}${edCell(d ? amt(d.amount) : "", { right: true })}</tr>`,
+    );
+  }
 
   const html = `
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${CANVAS};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;max-width:760px;margin:0 auto;background:#ffffff;border:1px solid ${LINE};font-family:Arial,Helvetica,sans-serif;">
     <tr>
-      <td align="center" style="padding:24px 12px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:12px;font-family:Arial,Helvetica,sans-serif;">
+      <td width="150" style="${cell}text-align:center;vertical-align:middle;padding:12px;">
+        <img src="${MUNSHOT_LOGO_DATA_URI}" width="58" height="58" alt="${escapeHtml(m.company.name)}" style="display:inline-block;border-radius:8px;">
+      </td>
+      <td style="${cell}padding:12px 16px;vertical-align:middle;">
+        <div style="font-size:22px;font-weight:bold;color:${INK};">${escapeHtml(m.company.name)}</div>
+        ${addressLines}
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="${cell}text-align:center;padding:11px;font-size:16px;color:${INK};">${escapeHtml(m.title)}</td>
+    </tr>
+    <tr>
+      <td colspan="2" style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${fieldRows.join("")}</table>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="padding:0;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr>
-            <td style="background:${NAVY};padding:24px;border-radius:12px 12px 0 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td width="44" valign="top" style="padding-right:12px;">
-                    <img src="${MUNSHOT_LOGO_DATA_URI}" width="36" height="36" alt="Munshot" style="display:block;">
-                  </td>
-                  <td valign="top">
-                    <div style="color:${GOLD};font-size:21px;font-weight:bold;">${COMPANY_NAME}</div>
-                    <div style="color:#c9bfa3;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-top:3px;">Monthly Payslip · ${cycleLabel(r.period)}</div>
-                    <!-- The badge sits below the wordmark rather than beside it — sharing a
-                         row with the subtitle text left too little width on a phone-sized
-                         card and forced an ugly 3-line wrap; stacked, neither element
-                         competes with the other for room at any width. -->
-                    <div style="margin-top:10px;">
-                      <span style="display:inline-block;padding:6px 12px;border-radius:999px;background:${GOLD_SOFT_ON_DARK};border:1px solid rgba(232,194,106,0.4);color:${GOLD};font-size:11px;font-weight:bold;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap;">${badge}</span>
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            </td>
+            <td colspan="2" style="${cell}${pad}${headFill}text-align:center;font-weight:bold;color:${INK};">Earnings</td>
+            <td colspan="2" style="${cell}${pad}${headFill}text-align:center;font-weight:bold;color:${INK};">Deductions</td>
           </tr>
           <tr>
-            <td style="padding:22px 24px 4px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${metaRow("Employee", escapeHtml(r.employee_name))}
-                ${metaRow("Designation", escapeHtml(r.job_title || "—"))}
-                ${metaRow("Worked Days", String(r.paid_days))}
-              </table>
-            </td>
+            <td style="${cell}${pad}${headFill}font-size:12px;font-weight:bold;color:${MUTED};">Components</td>
+            <td style="${cell}${pad}${headFill}font-size:12px;font-weight:bold;color:${MUTED};text-align:right;">Amount (Rs.)</td>
+            <td style="${cell}${pad}${headFill}font-size:12px;font-weight:bold;color:${MUTED};">Common Deductions</td>
+            <td style="${cell}${pad}${headFill}font-size:12px;font-weight:bold;color:${MUTED};text-align:right;">Amount (Rs.)</td>
+          </tr>
+          ${edRows.join("")}
+          <tr>
+            ${edCell("Gross Earning (A)", { bold: true })}${edCell(amt(m.gross), { right: true, bold: true })}
+            ${edCell("Total Deductions (B)", { bold: true })}${edCell(amt(m.totalDeductions), { right: true, bold: true })}
           </tr>
           <tr>
-            <td style="padding:14px 24px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${sectionHeader("Earnings")}
-                ${earningsRows}
-              </table>
-            </td>
+            ${edCell("Net Pay (A - B)", { bold: true })}${edCell(amt(m.netPay), { right: true, bold: true })}
+            <td colspan="2" style="${cell}"></td>
           </tr>
           <tr>
-            <td style="padding:10px 24px 0;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                ${sectionHeader("Deductions")}
-                ${deductionRows}
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:20px 24px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${GOLD_TINT};border-radius:8px;">
-                <tr>
-                  <td style="padding:16px 20px;font-size:12px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;color:${GOLD_DEEP};">Net Pay</td>
-                  <td style="padding:16px 20px;font-size:22px;font-weight:bold;color:${GOLD_DEEP};text-align:right;">${money(r.net_pay)}</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:0 24px 22px;border-top:1px solid ${BORDER};">
-              <div style="padding-top:14px;font-size:12px;color:${MUTED};">This is a system generated payslip.</div>
-              <div style="padding-top:4px;font-size:12px;color:${MUTED};">You can also download this as a PDF anytime from the employee portal.</div>
-            </td>
+            ${edCell("Total Pay", { bold: true })}${edCell(amt(m.netPay), { right: true, bold: true })}
+            <td colspan="2" style="${cell}${pad}font-size:13px;color:${INK};text-align:right;">${escapeHtml(m.amountInWords)}</td>
           </tr>
         </table>
       </td>
     </tr>
+    <tr>
+      <td colspan="2" style="${cell}text-align:center;padding:9px;font-size:12px;color:${MUTED};"><b style="color:${INK};">Note:</b> ${escapeHtml(m.note)}</td>
+    </tr>
   </table>`;
 
   // Collapse pretty-printed markup to compact HTML. Safe because every line
-  // break above falls between tags, never in the middle of visible text, so
-  // this cannot weld two words together the way stripping all whitespace
-  // indiscriminately could.
+  // break falls between tags, never in the middle of visible text.
   return html.replace(/>\s+</g, "><").trim();
 }
