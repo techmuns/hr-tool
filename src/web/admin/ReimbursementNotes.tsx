@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { currentMonth, recentMonths } from "../date";
+import { recentMonths, todayISODate } from "../date";
 import { formatINR } from "../money";
-import { cycleLabel } from "../../worker/payslip";
+import { cycleLabel, periodForDate } from "../../worker/payslip";
 import type { BreakupEntry, Employee, ReimbursementBreakup } from "../types";
 
 interface EditRow {
@@ -19,7 +19,7 @@ interface EditRow {
  * dropdown. Founders don't see this tab (they can view the breakup on Payroll).
  */
 export function ReimbursementNotes() {
-  const [period, setPeriod] = useState(currentMonth());
+  const [period, setPeriod] = useState(periodForDate(todayISODate()));
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);

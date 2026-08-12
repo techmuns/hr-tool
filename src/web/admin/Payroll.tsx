@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { currentMonth, formatDate } from "../date";
+import { formatDate, todayISODate } from "../date";
 import { confirmDialog } from "../confirm";
 import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
-import { cycleLabel, payDueDate } from "../../worker/payslip";
+import { cycleLabel, payDueDate, periodForDate } from "../../worker/payslip";
 import { AdjustmentsSection } from "./Adjustments";
 import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
 
@@ -108,7 +108,11 @@ interface EmailResult {
  * table never lags behind the thing that changed it.
  */
 export function Payroll() {
-  const [period, setPeriod] = useState(currentMonth());
+  // Default to the ACTIVE billing cycle, not the calendar month: cycles run
+  // 11th-to-10th and are paid on the 11th, so once the 11th passes the current
+  // cycle is next month's period (a fresh, zeroed one) — which is what should
+  // show, rather than the just-paid cycle frozen as "dues paid".
+  const [period, setPeriod] = useState(periodForDate(todayISODate()));
   const [rows, setRows] = useState<AdminPayrollRow[]>([]);
   const [adjustments, setAdjustments] = useState<CycleAdjustments | null>(null);
   const [loading, setLoading] = useState(false);
