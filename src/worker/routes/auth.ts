@@ -1,9 +1,28 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
+import { requireEmployee } from "../auth";
+import {
+  createAdminSession,
+  getAdminSessionEmployee,
+  revokeAdminSession,
+  setAdminSessionCookie,
+} from "../adminSession";
 import { sendRawEmail } from "../email";
+import { hashPassword, passwordStrengthError, verifyPassword } from "../password";
 import type { Employee } from "../types";
 
 const app = new Hono<AppEnv>();
+
+/** Shape returned to the client after any successful login — never the raw DB row. */
+function publicEmployee(employee: Employee) {
+  return {
+    id: employee.id,
+    name: employee.name,
+    email: employee.email,
+    role: employee.role,
+    tier: employee.tier,
+  };
+}
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -126,6 +145,96 @@ app.post("/auth/verify-otp", async (c) => {
   }
 
   return c.json({ role: employee.role, employee });
+});
+
+/**
+ * Step 2 of privileged access: the base session above (OTP or Munshot-relayed
+ * email, verified by requireEmployee) only proves "this is employee #N" — it
+ * never grants HR/founder capability by itself. Deliberately takes NO
+ * employee/email from the request body: the target account is always
+ * `c.get("employee")`, i.e. whoever the verified base session says the caller
+ * is, so this can only ever be used to authenticate as yourself, never to try
+ * a password against someone else's account. A role='admin' employee proves
+ * it's really them with a password only they know, and gets back a
+ * short-lived, server-tracked session cookie (see adminSession.ts). Every
+ * /admin/* route checks that cookie, never this endpoint's caller identity.
+ */
+app.post("/auth/admin-login", requireEmployee, async (c) => {
+  const employee = c.get("employee");
+  if (employee.role !== "admin") {
+    return c.json({ error: "This account has no admin access" }, 403);
+  }
+
+  const body = await c.req.json<{ password?: string }>().catch(() => ({}) as { password?: string });
+  const password = body.password ?? "";
+  if (!password) return c.json({ error: "Password is required" }, 400);
+
+  const credentials = await c.env.DB.prepare(
+    "SELECT password_hash FROM employee_credentials WHERE employee_id = ?"
+  )
+    .bind(employee.id)
+    .first<{ password_hash: string }>();
+  if (!credentials) {
+    return c.json({ error: "No admin password set yet", code: "no_password" }, 404);
+  }
+
+  const ok = await verifyPassword(password, credentials.password_hash);
+  if (!ok) return c.json({ error: "Incorrect password" }, 401);
+
+  const token = await createAdminSession(c.env.DB, employee.id);
+  setAdminSessionCookie(c, token);
+  return c.json({ ok: true, employee: publicEmployee(employee) });
+});
+
+app.post("/auth/admin-logout", async (c) => {
+  await revokeAdminSession(c);
+  return c.json({ ok: true });
+});
+
+/**
+ * "Whoami" for the admin session cookie — HttpOnly, so the SPA has no other
+ * way to know whether it's still (or already) live, including across a
+ * reload. Always 200: "not authenticated" is a normal state here, not an
+ * error.
+ */
+app.get("/auth/admin-session", async (c) => {
+  const employee = await getAdminSessionEmployee(c);
+  return c.json(employee ? { authenticated: true, employee: publicEmployee(employee) } : { authenticated: false });
+});
+
+/**
+ * Bootstraps or resets a privileged user's OWN admin password. Gated on the
+ * regular employee session (proof they own this email via OTP or the Munshot
+ * host relay) rather than an existing admin session — otherwise a HR/founder
+ * account with no password set yet could never create one. `employee_id`
+ * always comes from the verified session, never the request body, so this can
+ * only ever touch the caller's own account.
+ */
+app.post("/auth/admin-password/set", requireEmployee, async (c) => {
+  const employee = c.get("employee");
+  if (employee.role !== "admin") {
+    return c.json({ error: "Only HR/founder accounts have an admin password" }, 403);
+  }
+
+  const body = await c.req.json<{ password?: string }>().catch(() => ({}) as { password?: string });
+  const password = body.password ?? "";
+  const strengthError = passwordStrengthError(password);
+  if (strengthError) return c.json({ error: strengthError }, 400);
+
+  const hash = await hashPassword(password);
+  await c.env.DB.prepare(
+    `INSERT INTO employee_credentials (employee_id, password_hash, updated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT (employee_id) DO UPDATE SET password_hash = excluded.password_hash, updated_at = excluded.updated_at`
+  )
+    .bind(employee.id, hash)
+    .run();
+
+  // A password change invalidates any sessions issued under the old one —
+  // otherwise a compromised session would survive the fix meant to kill it.
+  await c.env.DB.prepare("DELETE FROM admin_sessions WHERE employee_id = ?").bind(employee.id).run();
+
+  return c.json({ ok: true });
 });
 
 export default app;

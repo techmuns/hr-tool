@@ -8,6 +8,30 @@
 export const DASHBOARD_ID = "hr-tool"; // <-- set per dashboard
 export const DASHBOARD_NAME = "HR Tool"; // <-- set per dashboard
 
+function parseOriginList(raw: string | undefined): string[] {
+  return (raw ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Configured via VITE_MUNSHOT_ALLOWED_ORIGINS (comma-separated scheme+host
+ * values, e.g. "https://app.munshot.com,https://staging.munshot.com") at
+ * build time. Passed into the vendor SDK below so ITS OWN internal
+ * postMessage listener — the only thing that ever sees the raw MessageEvent
+ * before this app's code runs at all — rejects anything from an unexpected
+ * origin, rather than accepting messages from any origin as it did before
+ * this fix. useHostContext.ts layers an independent origin + shape check on
+ * top of this for every message it can see directly (defense in depth: we
+ * cannot verify the vendor bundle's internal filtering ourselves).
+ *
+ * Left unset, this app does not silently fall back to trusting everything —
+ * see useHostContext.ts, which treats an empty allow-list as "reject all"
+ * for every message it validates directly.
+ */
+export const ALLOWED_HOST_ORIGINS = parseOriginList(import.meta.env.VITE_MUNSHOT_ALLOWED_ORIGINS as string | undefined);
+
 export interface SessionContext {
   token: string | null; // JWT bearer token for Munshot APIs
   userName: string | null;
@@ -143,6 +167,8 @@ function initSdk(): DashboardClientSdk {
     dashboardName: DASHBOARD_NAME,
     // Leave autoReady default (true). The SDK sends dashboard:ready itself
     // from inside its host:init handler, once it knows the channelId.
+    lockOriginOnFirstMessage: true,
+    ...(ALLOWED_HOST_ORIGINS.length ? { allowedOrigins: ALLOWED_HOST_ORIGINS } : {}),
   };
 
   const factory = g?.createDashboardClientSdk ?? g?.createClient;

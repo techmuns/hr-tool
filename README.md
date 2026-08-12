@@ -7,8 +7,36 @@ binding.
 ## Login
 
 Single text box on `/`. Typing `admin` signs in as HR; typing `employee` signs in
-as a sample employee. No passwords — identity is a demo-grade `x-user-id` /
-`x-role` header pair stored in `localStorage`.
+as a sample employee. Base identity is a demo-grade `x-user-id` / `x-role`
+header pair stored in `localStorage` — fine for telling employees apart, but
+not sufficient on its own for HR/founder (`role = 'admin'`) capability.
+
+**Admin/HR access additionally requires a password.** A `role = 'admin'`
+employee's base session unlocks nothing privileged by itself; they must also
+authenticate with a password via `POST /api/auth/admin-login`, which issues a
+short-lived (6h), HttpOnly, server-tracked session cookie. Every `/admin/*`
+and other privileged endpoint checks that cookie — never the `x-user-id`/
+`x-role` headers, which are plain client-supplied values. First-time setup:
+a privileged employee sets their own password via `POST
+/api/auth/admin-password/set`, gated on their base (OTP/host) session so it
+can only ever touch their own account. See `src/worker/adminSession.ts` and
+`src/worker/routes/auth.ts` for the implementation.
+
+Because the admin session cookie is `Secure`, it only works over HTTPS —
+`npm run dev:worker` (`wrangler dev`) needs `--local-protocol https` to
+exercise the admin-login flow locally; the deployed Worker is HTTPS-only
+already, so this only matters for local dev.
+
+### Embedding (Munshot iframe)
+
+When loaded inside the Munshot host's iframe, the base identity comes from a
+`postMessage` the host sends rather than the OTP form (see
+`src/web/lib/sdk.ts`, `src/web/hooks/useHostContext.ts`). Only messages from
+an allow-listed origin are trusted — set `VITE_MUNSHOT_ALLOWED_ORIGINS`
+(comma-separated, see `.env.example`) at build time to the real Munshot
+origin(s). Left unset, every postMessage-sourced identity is rejected rather
+than silently trusting an unconfigured allow-list, so the standalone OTP login
+still works but the auto-login-from-host path won't until it's configured.
 
 ## Setup
 
@@ -57,3 +85,4 @@ npm run deploy
 - `npm run deploy` — build + `wrangler deploy`.
 - `npm run db:migrate:local` / `db:migrate:remote` — apply D1 migrations.
 - `npm run db:seed:local` — re-run the seed script against the local D1 store.
+- `npm test` — runs the Worker test suite (`@cloudflare/vitest-pool-workers`, real D1 via Miniflare) plus frontend logic unit tests. Needs `npm run build` to have been run at least once (populates `dist/client`, which the Worker's static-assets binding requires to boot even in tests).
