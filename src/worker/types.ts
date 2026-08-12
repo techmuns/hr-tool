@@ -130,8 +130,10 @@ export interface Attendance {
   clock_in: string | null;
   clock_out: string | null;
   status: AttendanceStatus;
-  /** 1 when a present day was worked in-office rather than remotely. 0 | 1. */
+  /** 1 when a present day was manually marked in-office. 0 | 1. */
   in_office: number;
+  /** 1 when a present day was manually marked work-from-home. 0 | 1. */
+  wfh: number;
 }
 
 export interface AttendanceWithName extends Attendance {
@@ -216,6 +218,8 @@ export interface AdminPayrollRow extends PayrollWithName {
   work_mode: WorkMode;
   present_days: number;
   in_office_days: number;
+  /** Days HR manually flagged work-from-home this cycle (nothing is inferred). */
+  wfh_days: number;
   /**
    * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
    * above already reflects HALF of this total when a breakup exists; the raw

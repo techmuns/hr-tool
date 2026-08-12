@@ -35,14 +35,17 @@ app.get("/admin/payroll", async (c) => {
                  AND a.work_date BETWEEN ? AND ?) AS present_days,
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.in_office = 1
-                 AND a.work_date BETWEEN ? AND ?) AS in_office_days
+                 AND a.work_date BETWEEN ? AND ?) AS in_office_days,
+            (SELECT COUNT(*) FROM attendance a
+               WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.wfh = 1
+                 AND a.work_date BETWEEN ? AND ?) AS wfh_days
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      LEFT JOIN reimbursement_breakups rb ON rb.employee_id = p.employee_id AND rb.period = p.period
      WHERE p.period = ? AND e.archived = 0
      ORDER BY e.name ASC`
   )
-    .bind(cycle.start, cycle.end, cycle.start, cycle.end, period)
+    .bind(cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, period)
     .all<AdminPayrollRow>();
 
   return c.json(rows.results);
@@ -115,15 +118,24 @@ app.put("/admin/reimbursement-breakup", async (c) => {
     .filter((e) => e.label !== "" || e.amount > 0);
   const total = entries.reduce((sum, e) => sum + e.amount, 0);
 
-  await c.env.DB.prepare(
-    `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, updated_at, updated_by)
-     VALUES (?, ?, ?, ?, datetime('now'), ?)
-     ON CONFLICT (employee_id, period)
-     DO UPDATE SET entries = excluded.entries, total = excluded.total,
-                   updated_at = datetime('now'), updated_by = excluded.updated_by`,
-  )
-    .bind(employeeId, period, JSON.stringify(entries), total, editor.id)
-    .run();
+  if (entries.length === 0) {
+    // Cleared to nothing → drop the breakup entirely so payroll stops applying
+    // it (this is how HR "removes" a reimbursement — it disappears from Payroll,
+    // falling back to any approved requests, which for notepad-only use is zero).
+    await c.env.DB.prepare("DELETE FROM reimbursement_breakups WHERE employee_id = ? AND period = ?")
+      .bind(employeeId, period)
+      .run();
+  } else {
+    await c.env.DB.prepare(
+      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, datetime('now'), ?)
+       ON CONFLICT (employee_id, period)
+       DO UPDATE SET entries = excluded.entries, total = excluded.total,
+                     updated_at = datetime('now'), updated_by = excluded.updated_by`,
+    )
+      .bind(employeeId, period, JSON.stringify(entries), total, editor.id)
+      .run();
+  }
 
   // Net pay reimburses half this total — recompute so the Payroll tab reflects
   // it immediately. No-op on a cycle already marked paid (those stay frozen).

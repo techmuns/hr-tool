@@ -712,6 +712,12 @@ thead .hm-name {
 .hm-cell.present.in-office {
   box-shadow: inset 0 0 0 2px var(--present);
 }
+/* WFH present day: same green, a dashed inset outline — distinct from the solid
+   in-office ring, so HR can tell manually-marked office vs WFH days apart. */
+.hm-cell.present.wfh {
+  outline: 2px dashed var(--present);
+  outline-offset: -4px;
+}
 
 /* "Not clocked in" (absent status) = yellow */
 .hm-cell.absent {

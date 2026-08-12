@@ -370,7 +370,7 @@ export function Payroll() {
             <th>Base Salary</th>
             <th>Reimbursements</th>
             <th>Paid Days</th>
-            <th title="Present days worked in-office vs remotely this cycle (in-office & hybrid staff)">Office / WFH</th>
+            <th title="Days HR marked work-from-home this cycle (nothing is counted automatically)">WFH days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
             <th>Paid</th>
@@ -420,22 +420,8 @@ export function Payroll() {
                   formatINR(row.reimbursements)
                 )}
               </td>
-              <td>{row.paid_days}</td>
-              <td>
-                {row.work_mode === "in-office" || row.work_mode === "hybrid" ? (
-                  <span
-                    title={`${row.in_office_days} in-office · ${row.present_days - row.in_office_days} WFH of ${row.present_days} present days`}
-                  >
-                    <b>{row.in_office_days}</b> office
-                    <div className="muted" style={{ fontSize: 12 }}>
-                      {row.present_days - row.in_office_days} WFH · {row.present_days} total
-                    </div>
-                  </span>
-                ) : (
-                  <span className="muted" title="Remote employee">
-                    —
-                  </span>
-                )}
+              <td title={`${row.wfh_days} day${row.wfh_days === 1 ? "" : "s"} marked WFH this cycle`}>
+                {row.wfh_days > 0 ? row.wfh_days : <span className="muted">—</span>}
               </td>
               <td
                 title={`Unpaid leave ${formatINR(row.leave_deductions)} · manual ${formatINR(row.other_deductions)}`}
