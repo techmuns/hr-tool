@@ -1,10 +1,11 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from "react";
 import { Login } from "./components/Login";
+import { AdminUnlock } from "./components/AdminUnlock";
 import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { clearSession, getSession, setSession } from "./session";
-import { api, clearApiCache } from "./api";
+import { api, clearApiCache, getAdminSessionStatus } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
 import type { SessionContext } from "./lib/sdk";
 import type { Employee, EmployeeRole, Tier } from "./types";
@@ -49,6 +50,44 @@ function AdminArea({ tier }: { tier: Tier }) {
   ) : (
     <AdminDashboard topbarExtra={switcher} />
   );
+}
+
+type AdminSessionState = "checking" | "locked" | "unlocked";
+
+/**
+ * Fronts AdminArea with the admin-password gate. The base (OTP/host) session
+ * having role="admin" only means this employee IS HR/founder — it says
+ * nothing about whether THIS browser has completed the separate admin-session
+ * handshake (see /auth/admin-login). That state lives only in the HttpOnly
+ * admin_session cookie, so it's re-checked with the server on every mount
+ * rather than inferred from anything in localStorage.
+ */
+function AdminGate({ tier, employeeId }: { tier: Tier; employeeId: number }) {
+  const [state, setState] = useState<AdminSessionState>("checking");
+
+  useEffect(() => {
+    let cancelled = false;
+    setState("checking");
+    getAdminSessionStatus()
+      .then((res) => {
+        if (cancelled) return;
+        // A leftover admin_session cookie from a PREVIOUS employee (e.g. the
+        // Munshot host handed off to a different logged-in user in this same
+        // browser) must not unlock admin access for the CURRENT one — only
+        // treat it as unlocked when it actually belongs to employeeId.
+        setState(res.authenticated && res.employee.id === employeeId ? "unlocked" : "locked");
+      })
+      .catch(() => {
+        if (!cancelled) setState("locked");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [employeeId]);
+
+  if (state === "checking") return <Centered>Checking admin session…</Centered>;
+  if (state === "locked") return <AdminUnlock onUnlocked={() => setState("unlocked")} />;
+  return <AdminArea tier={tier} />;
 }
 
 // Memoized so a host message that changes only market/ticker context — not the
@@ -122,7 +161,7 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
   }
 
   if (session.role === "admin") {
-    return <AdminArea tier={session.tier} />;
+    return <AdminGate tier={session.tier} employeeId={session.employeeId} />;
   }
 
   return <EmployeeDashboard />;
@@ -134,7 +173,9 @@ export default function App() {
 
   useEffect(() => {
     if (!session.token) return;
-    console.info("[dashboard] token:", session.token, {
+    // Never log the token itself — it's a bearer credential for Munshot's own
+    // APIs. This is presence-only, for confirming the host handshake happened.
+    console.info("[dashboard] host session token received", {
       email: session.email,
       userName: session.userName,
     });

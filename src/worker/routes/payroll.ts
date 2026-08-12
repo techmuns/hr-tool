@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
-import { requireAdmin } from "../auth";
+import { requireAdmin, requireEmployee } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
 import { payslipHtml, payslipSubject, payCycle } from "../payslip";
@@ -9,7 +9,7 @@ import type { AdminPayrollRow } from "../types";
 
 const app = new Hono<AppEnv>();
 
-app.use("*", requireAdmin);
+app.use("*", requireEmployee, requireAdmin);
 
 const PERIOD_RE = /^\d{4}-\d{2}$/;
 

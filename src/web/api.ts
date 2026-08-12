@@ -13,11 +13,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set("x-role", session.role);
   }
 
-  const res = await fetch(`/api${path}`, { ...options, headers });
+  // The dashboard runs in a third-party (Munshot) iframe, so requests to its
+  // own origin still count as cross-site to the browser's cookie policy —
+  // "include" is required for the HttpOnly admin_session cookie to be sent.
+  const res = await fetch(`/api${path}`, { ...options, headers, credentials: "include" });
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const errorMessage = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;
-    throw new Error(errorMessage || `Request failed (${res.status})`);
+    const error = new Error(errorMessage || `Request failed (${res.status})`) as Error & { code?: string };
+    if (data && typeof data === "object" && "code" in data) error.code = (data as { code?: string }).code;
+    throw error;
   }
   return data as T;
 }
@@ -101,7 +106,7 @@ export async function fetchBill(reimbursementId: number): Promise<Blob> {
     headers.set("x-user-id", String(session.employeeId));
     headers.set("x-role", session.role);
   }
-  const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { headers });
+  const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { headers, credentials: "include" });
   if (!res.ok) {
     const data: unknown = await res.json().catch(() => null);
     const message = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;
@@ -117,6 +122,38 @@ export const api = {
   patch: <T>(path: string, body?: unknown) => mutate<T>(path, "PATCH", body),
   del: <T>(path: string) => mutate<T>(path, "DELETE"),
 };
+
+// --- Admin (privileged) session ---------------------------------------------
+// Separate from the api.* helpers above: this is a server-tracked HttpOnly
+// cookie session, not the localStorage session, and its "am I unlocked" state
+// must never be served from the GET cache — it has to reflect the cookie on
+// every check, including right after a login/logout.
+
+export interface AdminPublicEmployee {
+  id: number;
+  name: string;
+  email: string;
+  role: string;
+  tier: string;
+}
+
+export async function adminLogin(password: string): Promise<{ ok: true; employee: AdminPublicEmployee }> {
+  return request("/auth/admin-login", { method: "POST", body: JSON.stringify({ password }) });
+}
+
+export async function adminLogout(): Promise<void> {
+  await request("/auth/admin-logout", { method: "POST" });
+}
+
+export async function getAdminSessionStatus(): Promise<
+  { authenticated: true; employee: AdminPublicEmployee } | { authenticated: false }
+> {
+  return request("/auth/admin-session");
+}
+
+export async function setAdminPassword(password: string): Promise<void> {
+  await request("/auth/admin-password/set", { method: "POST", body: JSON.stringify({ password }) });
+}
 
 // --- Employee home bootstrap -------------------------------------------------
 // Fetch /me, attendance, leave and reimbursements in ONE request and seed the
