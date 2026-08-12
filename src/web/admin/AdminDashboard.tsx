@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
@@ -12,6 +12,13 @@ import { ArchivedEmployees } from "./ArchivedEmployees";
 import { ClockCard } from "../employee/ClockCard";
 import { WorkingDays } from "../employee/WorkingDays";
 import { getSession } from "../session";
+
+// The Document Generator ships the embedded template assets (logo, certificate
+// flourishes, signature) and pulls in docx/jspdf on demand, so it's lazy-loaded
+// — the admin bundle stays lean and this only downloads when the tab is opened.
+const DocumentGenerator = lazy(() =>
+  import("./DocumentGenerator").then((m) => ({ default: m.DocumentGenerator })),
+);
 
 /**
  * `topbarExtra` is the view switcher AdminArea (App.tsx) drops into the topbar
@@ -36,6 +43,7 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
     // HR keeps the daily reimbursement notepad; founders only view it on Payroll.
     ...(isHR ? [{ key: "reimb-notes", label: "Reimb. Notes" }] : []),
     { key: "certificates", label: "Certificates" },
+    { key: "documents", label: "Documents" },
     ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
     { key: "chat", label: "Chat" },
   ];
@@ -81,6 +89,11 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
               presetEmployeeId={certificatePreset}
               onConsumedPreset={() => setCertificatePreset(null)}
             />
+          )}
+          {view === "documents" && (
+            <Suspense fallback={<p className="muted">Loading document generator…</p>}>
+              <DocumentGenerator />
+            </Suspense>
           )}
           {isFounder && view === "feedback" && <FeedbackList />}
           {view === "chat" && <AdminChat />}

@@ -278,3 +278,45 @@ export interface Certificate {
 export interface CertificateWithCreator extends Certificate {
   created_by_name: string | null;
 }
+
+export type DocumentStatus = "draft" | "generated";
+
+/**
+ * One document produced by the Document Generator (offer letter, certificate,
+ * LOR, …). The template's fixed layout lives in the client template registry
+ * keyed by `template_id`; only the dynamic field values are persisted, in
+ * `data` — a JSON object keyed by field id that is the document's single source
+ * of truth, shared by the left-side form and the right-side live preview.
+ *
+ * `data` is stored as a JSON string in D1 (`DocumentRecord`) and returned to the
+ * client already parsed (`DocumentRow`).
+ */
+export interface DocumentRecord {
+  id: number;
+  template_id: string;
+  title: string;
+  recipient_name: string;
+  status: DocumentStatus;
+  /** JSON string of `{ [fieldId]: value }` as stored in D1. */
+  data: string;
+  /** Null once the referenced employee is deleted; the document is kept. */
+  employee_id: number | null;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+}
+
+/** A document as returned by the API: `data` parsed, creator name joined. */
+export interface DocumentRow {
+  id: number;
+  template_id: string;
+  title: string;
+  recipient_name: string;
+  status: DocumentStatus;
+  data: Record<string, string>;
+  employee_id: number | null;
+  created_at: string;
+  updated_at: string;
+  created_by: number | null;
+  created_by_name: string | null;
+}

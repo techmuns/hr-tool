@@ -32,4 +32,7 @@ export type {
   CertificateType,
   Certificate,
   CertificateWithCreator,
+  DocumentStatus,
+  DocumentRecord,
+  DocumentRow,
 } from "../worker/types";
