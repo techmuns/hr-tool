@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -135,9 +135,11 @@ export function Payroll() {
    * The two requests are independent: syncing payroll cannot change anything
    * the adjustments response reports, so they run in parallel.
    */
-  function load() {
-    setLoading(true);
-    setError(null);
+  function load(opts: { silent?: boolean; keepSelection?: boolean } = {}) {
+    if (!opts.silent) {
+      setLoading(true);
+      setError(null);
+    }
     Promise.all([
       api.get<AdminPayrollRow[]>(`/admin/payroll?period=${period}`, { force: true }),
       api.get<CycleAdjustments>(`/admin/adjustments?period=${period}`, { force: true }),
@@ -146,16 +148,43 @@ export function Payroll() {
         setRows(payroll);
         setAdjustments(adj);
         // Default to everyone we can actually reach; people with no address on
-        // file start unchecked rather than failing later.
-        setSelected(new Set(payroll.filter((r) => r.employee_email).map((r) => r.employee_id)));
+        // file start unchecked rather than failing later. A background refresh
+        // keeps the user's current checkbox selection instead of reseeding it.
+        if (!opts.keepSelection) {
+          setSelected(new Set(payroll.filter((r) => r.employee_email).map((r) => r.employee_id)));
+        }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (!opts.silent) setError(err instanceof Error ? err.message : "Failed to load");
+      })
+      .finally(() => {
+        if (!opts.silent) setLoading(false);
+      });
   }
 
   useEffect(() => {
     setResult(null);
     load();
+  }, [period]);
+
+  // Keep the cycle current on its own: once dues are marked paid and payslips
+  // emailed, that paid/sent state should appear without anyone pressing Refresh
+  // (including for a founder just watching the tab). Polls quietly — no spinner,
+  // keeps the email selection — and pauses on a hidden tab or mid-action.
+  const busyRef = useRef(false);
+  busyRef.current =
+    loading || paidBusy || paidBusyId !== null || emailingIds.length > 0 || openBreakup !== null;
+  useEffect(() => {
+    const tick = () => {
+      if (!document.hidden && !busyRef.current) load({ silent: true, keepSelection: true });
+    };
+    const id = setInterval(tick, 30000);
+    window.addEventListener("focus", tick);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("focus", tick);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period]);
 
   const paidCount = rows.filter((r) => r.paid_at).length;
