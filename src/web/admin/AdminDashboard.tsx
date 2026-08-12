@@ -3,6 +3,7 @@ import { Nav } from "../components/Nav";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
+import { ReimbursementNotes } from "./ReimbursementNotes";
 import { Certificates } from "./Certificates";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
@@ -32,6 +33,8 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
     // Payroll covers payslips and the adjustments that feed them — one cycle,
     // one screen, so an approval and the net pay it moves stay side by side.
     { key: "payroll", label: "Payroll" },
+    // HR keeps the daily reimbursement notepad; founders only view it on Payroll.
+    ...(isHR ? [{ key: "reimb-notes", label: "Reimb. Notes" }] : []),
     { key: "certificates", label: "Certificates" },
     ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
     { key: "chat", label: "Chat" },
@@ -72,6 +75,7 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
           {view === "employees" && <EmployeeDirectory onGoToCertificates={goToCertificates} />}
           {view === "archived" && <ArchivedEmployees onGoToCertificates={goToCertificates} />}
           {view === "payroll" && <Payroll />}
+          {isHR && view === "reimb-notes" && <ReimbursementNotes />}
           {view === "certificates" && (
             <Certificates
               presetEmployeeId={certificatePreset}

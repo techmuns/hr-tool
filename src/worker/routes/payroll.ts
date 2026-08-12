@@ -28,6 +28,8 @@ app.get("/admin/payroll", async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title,
             e.employment_type, e.date_of_joining, e.location, e.work_mode,
+            rb.total AS reimbursement_breakup_total,
+            rb.entries AS reimbursement_breakup_entries,
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present'
                  AND a.work_date BETWEEN ? AND ?) AS present_days,
@@ -36,6 +38,7 @@ app.get("/admin/payroll", async (c) => {
                  AND a.work_date BETWEEN ? AND ?) AS in_office_days
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
+     LEFT JOIN reimbursement_breakups rb ON rb.employee_id = p.employee_id AND rb.period = p.period
      WHERE p.period = ? AND e.archived = 0
      ORDER BY e.name ASC`
   )
@@ -43,6 +46,90 @@ app.get("/admin/payroll", async (c) => {
     .all<AdminPayrollRow>();
 
   return c.json(rows.results);
+});
+
+function safeParseEntries(json: string): { label: string; amount: number }[] {
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+interface BreakupBody {
+  employee_id?: number;
+  period?: string;
+  entries?: { label?: string; amount?: number }[];
+}
+
+/**
+ * View HR's reimbursement breakups for a cycle, keyed nowhere — just a list the
+ * Reimb. Notes tab and Payroll dropdown read. Any admin (HR or founder) can see
+ * these; only HR can write them (see the PUT below).
+ */
+app.get("/admin/reimbursement-breakup", async (c) => {
+  const period = c.req.query("period");
+  if (!period || !PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+
+  const rows = await c.env.DB.prepare(
+    "SELECT employee_id, period, entries, total, updated_at FROM reimbursement_breakups WHERE period = ?",
+  )
+    .bind(period)
+    .all<{ employee_id: number; period: string; entries: string; total: number; updated_at: string }>();
+
+  return c.json(
+    (rows.results ?? []).map((r) => ({
+      employee_id: r.employee_id,
+      period: r.period,
+      entries: safeParseEntries(r.entries),
+      total: r.total,
+      updated_at: r.updated_at,
+    })),
+  );
+});
+
+/**
+ * Save an employee's reimbursement breakup for a cycle — HR ONLY (founders can
+ * view it but not edit). Stores the notepad lines + their total; payroll then
+ * reimburses half that total (syncPayroll, run here so the figure updates at
+ * once). Amounts are in paise.
+ */
+app.put("/admin/reimbursement-breakup", async (c) => {
+  const editor = c.get("employee");
+  if (editor.tier !== "hr") {
+    return c.json({ error: "Only HR can edit reimbursement breakups" }, 403);
+  }
+
+  const body = await c.req.json<BreakupBody>().catch(() => ({}) as BreakupBody);
+  const employeeId = Number(body.employee_id);
+  const period = typeof body.period === "string" ? body.period : "";
+  if (!Number.isInteger(employeeId)) return c.json({ error: "employee_id is required" }, 400);
+  if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+
+  const entries = (Array.isArray(body.entries) ? body.entries : [])
+    .map((e) => ({
+      label: typeof e.label === "string" ? e.label.slice(0, 200) : "",
+      amount: Number.isFinite(e.amount) ? Math.max(0, Math.round(e.amount as number)) : 0,
+    }))
+    .filter((e) => e.label !== "" || e.amount > 0);
+  const total = entries.reduce((sum, e) => sum + e.amount, 0);
+
+  await c.env.DB.prepare(
+    `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, updated_at, updated_by)
+     VALUES (?, ?, ?, ?, datetime('now'), ?)
+     ON CONFLICT (employee_id, period)
+     DO UPDATE SET entries = excluded.entries, total = excluded.total,
+                   updated_at = datetime('now'), updated_by = excluded.updated_by`,
+  )
+    .bind(employeeId, period, JSON.stringify(entries), total, editor.id)
+    .run();
+
+  // Net pay reimburses half this total — recompute so the Payroll tab reflects
+  // it immediately. No-op on a cycle already marked paid (those stay frozen).
+  await syncPayroll(c.env.DB, period);
+
+  return c.json({ employee_id: employeeId, period, entries, total });
 });
 
 /**

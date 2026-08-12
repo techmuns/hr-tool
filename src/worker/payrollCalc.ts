@@ -146,12 +146,23 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
 
   // Only people kept on payroll — removed people (e.g. freelancers) and archived
   // employees are skipped.
-  const [employees, unpaidLeaveDays, approvedReimbursements, manualDeductions] = await Promise.all([
+  const [employees, unpaidLeaveDays, approvedReimbursements, manualDeductions, breakupRows] = await Promise.all([
     db.prepare("SELECT * FROM employees WHERE on_payroll = 1 AND archived = 0").all<Employee>(),
     unpaidLeaveDaysByEmployee(db, cycle),
     approvedReimbursementsByEmployee(db, cycle),
     manualDeductionsByEmployee(db, period),
+    db.prepare("SELECT employee_id, total FROM reimbursement_breakups WHERE period = ?").bind(period).all<{
+      employee_id: number;
+      total: number;
+    }>(),
   ]);
+
+  // When HR has logged a reimbursement breakup for someone this cycle, payroll
+  // reimburses HALF that notepad total and it OVERRIDES the approved-request
+  // sum. Where there's no breakup, the approved requests stand as before.
+  const breakupHalf = new Map(
+    (breakupRows.results ?? []).map((r) => [r.employee_id, Math.round(r.total / 2)]),
+  );
 
   const upsert = db.prepare(
     `INSERT INTO payroll (employee_id, period, base_salary, paid_days, unpaid_days, deductions,
@@ -173,7 +184,9 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
     const pay = computePay({
       monthlySalary: employee.monthly_salary,
       unpaidDays: unpaidLeaveDays.get(employee.id) ?? 0,
-      reimbursements: approvedReimbursements.get(employee.id) ?? 0,
+      reimbursements: breakupHalf.has(employee.id)
+        ? (breakupHalf.get(employee.id) as number)
+        : approvedReimbursements.get(employee.id) ?? 0,
       otherDeductions: manualDeductions.get(employee.id) ?? 0,
     });
     return upsert.bind(

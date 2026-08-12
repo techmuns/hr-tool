@@ -9,7 +9,84 @@ import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate } from "../../worker/payslip";
 import { AdjustmentsSection } from "./Adjustments";
-import type { AdminPayrollRow, CycleAdjustments } from "../types";
+import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
+
+function parseEntries(json: string | null): BreakupEntry[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The daily reimbursement breakup HR logged, shown when the reimbursements
+ * total is clicked. Read-only here (HR edits it in the Reimb. Notes tab); the
+ * payroll figure above is half this total, spelled out at the bottom.
+ */
+function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () => void }) {
+  const entries = parseEntries(row.reimbursement_breakup_entries);
+  const total = row.reimbursement_breakup_total ?? 0;
+  return (
+    <>
+      <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={onClose} />
+      <div
+        style={{
+          position: "absolute",
+          zIndex: 50,
+          top: "100%",
+          left: 0,
+          marginTop: 4,
+          minWidth: 250,
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          boxShadow: "0 8px 24px rgba(0,0,0,.2)",
+          padding: 10,
+          textAlign: "left",
+          whiteSpace: "normal",
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Daily reimbursement breakup</div>
+        <table style={{ width: "100%", fontSize: 13 }}>
+          <tbody>
+            {entries.map((e, i) => (
+              <tr key={i}>
+                <td style={{ padding: "2px 0" }}>{e.label || <span className="muted">—</span>}</td>
+                <td style={{ padding: "2px 0", textAlign: "right" }}>{formatINR(e.amount)}</td>
+              </tr>
+            ))}
+            {entries.length === 0 && (
+              <tr>
+                <td className="muted" colSpan={2}>
+                  No entries logged.
+                </td>
+              </tr>
+            )}
+          </tbody>
+          <tfoot>
+            <tr style={{ borderTop: "1px solid var(--border)" }}>
+              <td style={{ padding: "4px 0" }}>Total logged</td>
+              <td style={{ padding: "4px 0", textAlign: "right" }}>
+                <b>{formatINR(total)}</b>
+              </td>
+            </tr>
+            <tr>
+              <td style={{ padding: "2px 0" }} className="muted">
+                Reimbursed (50%)
+              </td>
+              <td style={{ padding: "2px 0", textAlign: "right" }} className="muted">
+                {formatINR(Math.round(total / 2))}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </>
+  );
+}
 
 interface EmailResult {
   sent: string[];
@@ -41,6 +118,8 @@ export function Payroll() {
   // Which single person's paid state is in flight (per-row "Mark paid"),
   // separate from the cycle-wide `paidBusy` above.
   const [paidBusyId, setPaidBusyId] = useState<number | null>(null);
+  // Which row's reimbursement breakup dropdown is open (by employee_id).
+  const [openBreakup, setOpenBreakup] = useState<number | null>(null);
   const [emailingIds, setEmailingIds] = useState<number[]>([]);
   const [result, setResult] = useState<EmailResult | null>(null);
   // Who gets a payslip on the next bulk send. Seeded from the loaded rows, then
@@ -289,7 +368,25 @@ export function Payroll() {
                 )}
               </td>
               <td>{formatINR(row.base_salary)}</td>
-              <td>{formatINR(row.reimbursements)}</td>
+              <td>
+                {row.reimbursement_breakup_entries ? (
+                  <span style={{ position: "relative", display: "inline-block" }}>
+                    <button
+                      type="button"
+                      className="link-btn"
+                      title="View HR's daily breakup (payroll reimburses 50% of it)"
+                      onClick={() => setOpenBreakup(openBreakup === row.employee_id ? null : row.employee_id)}
+                    >
+                      {formatINR(row.reimbursements)} ▾
+                    </button>
+                    {openBreakup === row.employee_id && (
+                      <BreakupDropdown row={row} onClose={() => setOpenBreakup(null)} />
+                    )}
+                  </span>
+                ) : (
+                  formatINR(row.reimbursements)
+                )}
+              </td>
               <td>{row.paid_days}</td>
               <td>
                 {row.work_mode === "in-office" || row.work_mode === "hybrid" ? (

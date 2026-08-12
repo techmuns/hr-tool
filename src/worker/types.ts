@@ -216,6 +216,29 @@ export interface AdminPayrollRow extends PayrollWithName {
   work_mode: WorkMode;
   present_days: number;
   in_office_days: number;
+  /**
+   * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
+   * above already reflects HALF of this total when a breakup exists; the raw
+   * total and entries are here so the Payroll tab can show the full breakdown
+   * in a dropdown. Null when HR hasn't entered one (approved requests stand).
+   */
+  reimbursement_breakup_total: number | null;
+  reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
+}
+
+/** One labelled line in HR's daily reimbursement notepad; amount in paise. */
+export interface BreakupEntry {
+  label: string;
+  amount: number;
+}
+
+/** HR's reimbursement notepad for one employee in one pay cycle. */
+export interface ReimbursementBreakup {
+  employee_id: number;
+  period: string;
+  entries: BreakupEntry[];
+  total: number;
+  updated_at: string;
 }
 
 export type CertificateType = "leaving" | "lor";

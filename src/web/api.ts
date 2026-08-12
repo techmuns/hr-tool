@@ -113,6 +113,7 @@ export async function fetchBill(reimbursementId: number): Promise<Blob> {
 export const api = {
   get: <T>(path: string, opts?: GetOptions) => cachedGet<T>(path, opts),
   post: <T>(path: string, body?: unknown) => mutate<T>(path, "POST", body),
+  put: <T>(path: string, body?: unknown) => mutate<T>(path, "PUT", body),
   patch: <T>(path: string, body?: unknown) => mutate<T>(path, "PATCH", body),
   del: <T>(path: string) => mutate<T>(path, "DELETE"),
 };

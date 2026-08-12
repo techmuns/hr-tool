@@ -21,6 +21,8 @@ export type {
   Payroll,
   PayrollWithName,
   AdminPayrollRow,
+  BreakupEntry,
+  ReimbursementBreakup,
   Reimbursement,
   ReimbursementWithName,
   Deduction,
