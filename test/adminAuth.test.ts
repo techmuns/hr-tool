@@ -170,7 +170,7 @@ describe("g) unauthorized access to privileged APIs", () => {
       ["GET", "/admin/roles"],
       ["GET", "/admin/attendance"],
       ["GET", "/admin/adjustments?period=2026-08"],
-      ["GET", "/admin/certificates"],
+      ["GET", "/admin/documents"],
       ["GET", "/admin/chat?employee_id=1"],
       ["GET", "/admin/feedback"],
     ];

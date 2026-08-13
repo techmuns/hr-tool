@@ -4,7 +4,6 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { AttendanceTable } from "./AttendanceTable";
 import { Payroll } from "./Payroll";
 import { ReimbursementNotes } from "./ReimbursementNotes";
-import { Certificates } from "./Certificates";
 import { FeedbackList } from "./FeedbackList";
 import { AdminChat } from "./AdminChat";
 import { EmployeeDirectory } from "./EmployeeDirectory";
@@ -52,14 +51,6 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
 
   const [view, setView] = useState(isHR ? "home" : "attendance");
   const [attendanceRefresh, setAttendanceRefresh] = useState(0);
-  // Set when "Remove employee" offers to send a leaving certificate first —
-  // switches to this tab with that person already selected in the form.
-  const [certificatePreset, setCertificatePreset] = useState<number | null>(null);
-
-  function goToCertificates(employeeId: number) {
-    setCertificatePreset(employeeId);
-    setView("certificates");
-  }
 
   return (
     <div className="app-shell">
@@ -81,17 +72,11 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
               <WorkingDays refreshSignal={attendanceRefresh} />
             </>
           )}
-          {view === "attendance" && <AttendanceTable onGoToCertificates={goToCertificates} />}
-          {view === "employees" && <EmployeeDirectory onGoToCertificates={goToCertificates} />}
-          {view === "archived" && <ArchivedEmployees onGoToCertificates={goToCertificates} />}
+          {view === "attendance" && <AttendanceTable />}
+          {view === "employees" && <EmployeeDirectory />}
+          {view === "archived" && <ArchivedEmployees />}
           {view === "payroll" && <Payroll />}
           {isHR && view === "reimb-notes" && <ReimbursementNotes />}
-          {view === "certificates" && (
-            <Certificates
-              presetEmployeeId={certificatePreset}
-              onConsumedPreset={() => setCertificatePreset(null)}
-            />
-          )}
           {view === "documents" && (
             <Suspense fallback={<p className="muted">Loading document generator…</p>}>
               <DocumentGenerator />

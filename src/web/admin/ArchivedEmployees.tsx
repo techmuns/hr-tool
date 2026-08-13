@@ -12,11 +12,7 @@ import type { Employee } from "../types";
  * payroll and the active directory. Open one to see their retained history
  * (the same panel as the directory) or restore them to active.
  */
-export function ArchivedEmployees({
-  onGoToCertificates,
-}: {
-  onGoToCertificates: (employeeId: number) => void;
-}) {
+export function ArchivedEmployees() {
   const [rows, setRows] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,12 +110,7 @@ export function ArchivedEmployees({
       </table>
 
       {panelTarget !== null && (
-        <EmployeePanel
-          target={panelTarget}
-          onClose={() => setPanelTarget(null)}
-          onChanged={load}
-          onGoToCertificates={onGoToCertificates}
-        />
+        <EmployeePanel target={panelTarget} onClose={() => setPanelTarget(null)} onChanged={load} />
       )}
     </Card>
   );

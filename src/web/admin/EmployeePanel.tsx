@@ -64,13 +64,10 @@ export function EmployeePanel({
   target,
   onClose,
   onChanged,
-  onGoToCertificates,
 }: {
   target: number | "new";
   onClose: () => void;
   onChanged: () => void;
-  /** Lets "Remove" redirect to the Certificates tab instead of deleting. */
-  onGoToCertificates: (employeeId: number) => void;
 }) {
   const isNew = target === "new";
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -170,20 +167,6 @@ export function EmployeePanel({
 
   async function remove() {
     if (isNew || !employee) return;
-
-    // Offered every time, regardless of whether one was already issued —
-    // there's no reliable way to tell "already covered" from "issued for an
-    // unrelated reason", and asking again costs one extra click against the
-    // alternative of silently deleting someone with no leaving paperwork.
-    const wantsCertificate = await confirmDialog(
-      `Send ${employee.name} a leaving certificate before removing them?`,
-      { confirmLabel: "Go to Certificates", cancelLabel: "Skip" },
-    );
-    if (wantsCertificate) {
-      onGoToCertificates(employee.id);
-      onClose();
-      return;
-    }
 
     const ok = await confirmDialog(`Remove ${employee.name}? This deletes their attendance, leaves and payroll too.`, {
       confirmLabel: "Remove",
