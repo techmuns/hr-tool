@@ -42,7 +42,9 @@ export function AdminDashboard({ topbarExtra }: { topbarExtra?: ReactNode }) {
     { key: "payroll", label: "Payroll" },
     // HR keeps the daily reimbursement notepad; founders only view it on Payroll.
     ...(isHR ? [{ key: "reimb-notes", label: "Reimb. Notes" }] : []),
-    { key: "certificates", label: "Certificates" },
+    // Certificates is no longer a standalone nav tab — the Documents generator
+    // covers certificates/LORs. The screen is still reached programmatically by
+    // the "issue a leaving certificate" step when removing an employee.
     { key: "documents", label: "Documents" },
     ...(isFounder ? [{ key: "feedback", label: "Feedback" }] : []),
     { key: "chat", label: "Chat" },
