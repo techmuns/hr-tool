@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
-import { getAdminSessionEmployee } from "../adminSession";
 import type { ChatMessage } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -27,6 +26,7 @@ app.get("/admin/chat", requireAdmin, async (c) => {
 
 app.post("/chat", async (c) => {
   const employee = c.get("employee");
+  const role = c.req.header("x-role");
   const body = await c
     .req.json<{ body?: string; employee_id?: number }>()
     .catch(() => ({}) as { body?: string; employee_id?: number });
@@ -37,11 +37,7 @@ app.post("/chat", async (c) => {
   let threadEmployeeId = employee.id;
   let senderRole: "employee" | "admin" = "employee";
 
-  // Posting into an arbitrary employee's thread as "admin" is a privileged
-  // action, so it needs the real admin session — not just a client-supplied
-  // x-role header, which any authenticated caller can set to whatever they like.
-  const adminSession = await getAdminSessionEmployee(c);
-  if (adminSession) {
+  if (role === "admin" && employee.role === "admin") {
     if (!body.employee_id) return c.json({ error: "employee_id is required for admin replies" }, 400);
     threadEmployeeId = body.employee_id;
     senderRole = "admin";

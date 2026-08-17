@@ -16,21 +16,36 @@ function parseOriginList(raw: string | undefined): string[] {
 }
 
 /**
- * Configured via VITE_MUNSHOT_ALLOWED_ORIGINS (comma-separated scheme+host
- * values, e.g. "https://app.munshot.com,https://staging.munshot.com") at
- * build time. Passed into the vendor SDK below so ITS OWN internal
- * postMessage listener — the only thing that ever sees the raw MessageEvent
- * before this app's code runs at all — rejects anything from an unexpected
- * origin, rather than accepting messages from any origin as it did before
- * this fix. useHostContext.ts layers an independent origin + shape check on
- * top of this for every message it can see directly (defense in depth: we
- * cannot verify the vendor bundle's internal filtering ourselves).
+ * Munshot is embedded from muns.io. This is the real, currently-used host
+ * origin, committed as a fallback so a build that forgets to set
+ * VITE_MUNSHOT_ALLOWED_ORIGINS still fails closed to a real allow-list
+ * instead of an empty one.
  *
- * Left unset, this app does not silently fall back to trusting everything —
- * see useHostContext.ts, which treats an empty allow-list as "reject all"
- * for every message it validates directly.
+ * IMPORTANT — this must be the exact scheme+host of every origin that's
+ * allowed to postMessage a session (JWT + email) into this app. The vendor
+ * SDK (below) matches origins with a plain `Set.has(origin)` — no wildcard/
+ * subdomain support — and it drops non-matching messages internally before
+ * this app's own code ever sees them (see useHostContext.ts), so listing a
+ * pattern like "*.muns.io" here would silently match nothing. If Munshot
+ * starts embedding from another muns.io subdomain, add its exact origin to
+ * this list (or to VITE_MUNSHOT_ALLOWED_ORIGINS, which takes precedence).
  */
-export const ALLOWED_HOST_ORIGINS = parseOriginList(import.meta.env.VITE_MUNSHOT_ALLOWED_ORIGINS as string | undefined);
+const DEFAULT_ALLOWED_HOST_ORIGINS = ["https://chat.muns.io"];
+
+/**
+ * Configured via VITE_MUNSHOT_ALLOWED_ORIGINS (comma-separated scheme+host
+ * values, e.g. "https://chat.muns.io,https://staging.muns.io") at build
+ * time; falls back to DEFAULT_ALLOWED_HOST_ORIGINS above when unset. Passed
+ * into the vendor SDK below so ITS OWN internal postMessage listener — the
+ * only thing that ever sees the raw MessageEvent before this app's code runs
+ * at all — rejects anything from an unexpected origin, rather than accepting
+ * messages from any origin as it did before this fix. useHostContext.ts
+ * layers an independent origin + shape check on top of this for every
+ * message it can see directly (defense in depth: we cannot verify the
+ * vendor bundle's internal filtering ourselves).
+ */
+const envOrigins = parseOriginList(import.meta.env.VITE_MUNSHOT_ALLOWED_ORIGINS as string | undefined);
+export const ALLOWED_HOST_ORIGINS = envOrigins.length ? envOrigins : DEFAULT_ALLOWED_HOST_ORIGINS;
 
 export interface SessionContext {
   token: string | null; // JWT bearer token for Munshot APIs
