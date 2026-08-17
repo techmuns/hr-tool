@@ -29,14 +29,22 @@ already, so this only matters for local dev.
 
 ### Embedding (Munshot iframe)
 
-When loaded inside the Munshot host's iframe, the base identity comes from a
-`postMessage` the host sends rather than the OTP form (see
-`src/web/lib/sdk.ts`, `src/web/hooks/useHostContext.ts`). Only messages from
-an allow-listed origin are trusted — set `VITE_MUNSHOT_ALLOWED_ORIGINS`
-(comma-separated, see `.env.example`) at build time to the real Munshot
-origin(s). Left unset, every postMessage-sourced identity is rejected rather
-than silently trusting an unconfigured allow-list, so the standalone OTP login
-still works but the auto-login-from-host path won't until it's configured.
+When loaded inside the Munshot host's iframe, the base identity (including the
+session JWT) comes from a `postMessage` the host sends rather than the OTP
+form (see `src/web/lib/sdk.ts`, `src/web/hooks/useHostContext.ts`). Only
+messages from an allow-listed origin are trusted — set
+`VITE_MUNSHOT_ALLOWED_ORIGINS` (comma-separated, see `.env.example`) at build
+time to override the real muns.io origin(s); left unset, it falls back to the
+`DEFAULT_ALLOWED_HOST_ORIGINS` hardcoded in `sdk.ts` (currently
+`https://chat.muns.io`) rather than an empty list, so this never silently
+degrades to "accept everything."
+
+**No wildcards.** The vendor SDK matches origins with an exact `Set.has()` —
+it drops anything else before this app's own code even runs, so a pattern
+like `*.muns.io` would silently match nothing. If Munshot ever embeds this
+app from another muns.io subdomain, add its exact origin to
+`DEFAULT_ALLOWED_HOST_ORIGINS` in `sdk.ts` (or to
+`VITE_MUNSHOT_ALLOWED_ORIGINS`, which takes precedence).
 
 ## Setup
 
