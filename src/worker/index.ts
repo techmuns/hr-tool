@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv, Bindings } from "./auth";
 import { runAttendanceReminders } from "./attendanceReminders";
+import { securityHeaders } from "./security";
 import authRoutes from "./routes/auth";
 import employeeRoutes from "./routes/employees";
 import attendanceRoutes from "./routes/attendance";
@@ -15,6 +16,8 @@ import extensionRoutes from "./routes/extension";
 import appVersionRoutes from "./routes/appVersion";
 
 const app = new Hono<AppEnv>();
+
+app.use("*", securityHeaders);
 
 app.route("/api", authRoutes);
 // Public, no-auth routes must be mounted BEFORE the sub-apps below that do

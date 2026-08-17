@@ -46,6 +46,14 @@ app from another muns.io subdomain, add its exact origin to
 `DEFAULT_ALLOWED_HOST_ORIGINS` in `sdk.ts` (or to
 `VITE_MUNSHOT_ALLOWED_ORIGINS`, which takes precedence).
 
+**Framing is locked down too.** Every response (API and static assets alike)
+carries `Content-Security-Policy: frame-ancestors https://chat.muns.io` (see
+`src/worker/security.ts`), so no site other than the real Munshot host can
+embed this app in an iframe at all — closing off clickjacking/UI-redress
+against the framing itself, on top of the postMessage origin check above.
+Keep `FRAME_ANCESTORS` there in sync with `DEFAULT_ALLOWED_HOST_ORIGINS` in
+`sdk.ts`.
+
 ## Setup
 
 ```bash
