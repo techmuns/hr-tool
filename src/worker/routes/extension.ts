@@ -9,7 +9,7 @@ const app = new Hono<AppEnv>();
  * change. Installed copies compare their own version against this and prompt
  * the user to update when they're behind. Unauthenticated on purpose.
  */
-const EXTENSION_LATEST = "1.0.0";
+const EXTENSION_LATEST = "1.1.0";
 
 app.get("/extension/version", (c) => {
   return c.json({

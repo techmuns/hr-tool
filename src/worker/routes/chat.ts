@@ -26,7 +26,6 @@ app.get("/admin/chat", requireAdmin, async (c) => {
 
 app.post("/chat", async (c) => {
   const employee = c.get("employee");
-  const role = c.req.header("x-role");
   const body = await c
     .req.json<{ body?: string; employee_id?: number }>()
     .catch(() => ({}) as { body?: string; employee_id?: number });
@@ -37,7 +36,7 @@ app.post("/chat", async (c) => {
   let threadEmployeeId = employee.id;
   let senderRole: "employee" | "admin" = "employee";
 
-  if (role === "admin" && employee.role === "admin") {
+  if (employee.role === "admin") {
     if (!body.employee_id) return c.json({ error: "employee_id is required for admin replies" }, 400);
     threadEmployeeId = body.employee_id;
     senderRole = "admin";

@@ -161,7 +161,7 @@ app.get("/reimbursements/:id/bill", async (c) => {
   if (!row || !row.bill_key) return c.json({ error: "Bill not found" }, 404);
 
   const viewer = c.get("employee");
-  const isAdmin = viewer.role === "admin" && c.req.header("x-role") === "admin";
+  const isAdmin = viewer.role === "admin";
   if (!isAdmin && row.employee_id !== viewer.id) return c.json({ error: "Not allowed" }, 403);
 
   if (!c.env.BILLS) return c.json({ error: "Bill uploads are temporarily unavailable" }, 503);

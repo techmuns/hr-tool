@@ -1,23 +1,28 @@
 // Service worker: handles the keyboard shortcuts and talks to the HR tool API.
 //
-// The HR tool uses header-based identity (x-user-id / x-role), the same as the
-// website. We store the employee id + role once (see popup.js) and replay them
-// on each clock-in / clock-out request.
+// The HR tool identifies this device with a server-issued session token,
+// obtained once via email OTP (see popup.js) and sent back as
+// `Authorization: Bearer <token>` on every request. The server checks it
+// against a database row rather than trusting it at face value, so unlike
+// the old x-user-id/x-role headers, nothing in chrome.storage can be edited
+// to make a request act as a different employee — only invalidated.
 
 const DEFAULT_BASE_URL = "https://hr-tool.tech-441.workers.dev";
 const CLOCK_IN_PATH = "/api/attendance/clock-in";
 const CLOCK_OUT_PATH = "/api/attendance/clock-out";
+const LOGOUT_PATH = "/api/auth/logout";
 const VERSION_PATH = "/api/extension/version";
 const UPDATE_ALARM = "hr-update-check";
 
 async function getConfig() {
-  const { baseUrl, employeeId, role, name } = await chrome.storage.local.get([
+  const { baseUrl, employeeId, role, name, token } = await chrome.storage.local.get([
     "baseUrl",
     "employeeId",
     "role",
     "name",
+    "token",
   ]);
-  return { baseUrl: baseUrl || DEFAULT_BASE_URL, employeeId, role, name };
+  return { baseUrl: baseUrl || DEFAULT_BASE_URL, employeeId, role, name, token };
 }
 
 function notify(title, message) {
@@ -38,9 +43,9 @@ function fmtTime(iso) {
 }
 
 async function punch(action) {
-  const { baseUrl, employeeId, role, name } = await getConfig();
+  const { baseUrl, employeeId, name, token } = await getConfig();
 
-  if (!baseUrl || !employeeId) {
+  if (!baseUrl || !employeeId || !token) {
     notify("Not connected", "Open the extension and connect with your email first.");
     return;
   }
@@ -53,10 +58,15 @@ async function punch(action) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-user-id": String(employeeId),
-        "x-role": role || "employee",
+        Authorization: `Bearer ${token}`,
       },
     });
+
+    if (res.status === 401) {
+      await chrome.storage.local.remove(["employeeId", "role", "name", "token"]);
+      notify("Session expired", "Open the extension and reconnect with your email.");
+      return;
+    }
 
     const data = await res.json().catch(() => null);
 

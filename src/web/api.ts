@@ -3,19 +3,17 @@ import { currentMonth } from "./date";
 import type { Attendance, Employee, LeaveRequest, Reimbursement } from "./types";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const session = getSession();
   const headers = new Headers(options.headers);
   // FormData supplies its own multipart Content-Type, including the boundary —
   // overriding it here would make the body unparseable on the other end.
   if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  if (session) {
-    headers.set("x-user-id", String(session.employeeId));
-    headers.set("x-role", session.role);
-  }
 
-  // The dashboard runs in a third-party (Munshot) iframe, so requests to its
-  // own origin still count as cross-site to the browser's cookie policy —
-  // "include" is required for the HttpOnly admin_session cookie to be sent.
+  // Identity is carried by the HttpOnly hr_session cookie (see
+  // src/worker/employeeSession.ts) — never by anything this client could set
+  // itself, so there's nothing to attach here. The dashboard runs in a
+  // third-party (Munshot) iframe, so requests to its own origin still count
+  // as cross-site to the browser's cookie policy — "include" is required for
+  // that cookie to be sent at all.
   const res = await fetch(`/api${path}`, { ...options, headers, credentials: "include" });
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
@@ -96,17 +94,11 @@ async function mutate<T>(path: string, method: string, body?: unknown): Promise<
 }
 
 /**
- * Reimbursement bills need the session headers, so they can't be plain <a href>
+ * Reimbursement bills need the session cookie, so they can't be plain <a href>
  * links — fetch the bytes here and let the caller hand the blob to the browser.
  */
 export async function fetchBill(reimbursementId: number): Promise<Blob> {
-  const session = getSession();
-  const headers = new Headers();
-  if (session) {
-    headers.set("x-user-id", String(session.employeeId));
-    headers.set("x-role", session.role);
-  }
-  const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { headers, credentials: "include" });
+  const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { credentials: "include" });
   if (!res.ok) {
     const data: unknown = await res.json().catch(() => null);
     const message = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;

@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import type { Employee } from "./types";
+import { getEmployeeSessionEmployee } from "./employeeSession";
 
 export type Bindings = {
   DB: D1Database;
@@ -22,17 +23,16 @@ export type Variables = {
 export type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 /**
- * Demo-grade identity: trusts x-user-id / x-role headers set by the client
- * from its logged-in session. No passwords, per product requirements.
+ * Identity comes from a server-issued, unguessable session token (see
+ * employeeSession.ts) — never from anything the client merely asserts.
+ * Previously this trusted a plain x-user-id header the client set from its
+ * own localStorage, which meant editing devtools/localStorage was enough to
+ * become any other employee; the session token can't be edited into a
+ * different identity, only invalidated, because it's checked against a
+ * server-side table rather than decoded from client-supplied data.
  */
 export async function requireEmployee(c: Context<AppEnv>, next: Next) {
-  const userId = c.req.header("x-user-id");
-  if (!userId || Number.isNaN(Number(userId))) {
-    return c.json({ error: "Not authenticated" }, 401);
-  }
-  const employee = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
-    .bind(Number(userId))
-    .first<Employee>();
+  const employee = await getEmployeeSessionEmployee(c);
   if (!employee) {
     return c.json({ error: "Not authenticated" }, 401);
   }
@@ -40,10 +40,15 @@ export async function requireEmployee(c: Context<AppEnv>, next: Next) {
   await next();
 }
 
+/**
+ * `employee` here already came from the server-verified session (see
+ * requireEmployee above), so `role`/`tier` are trustworthy on their own —
+ * unlike the old x-role header, there's no client-supplied value left to
+ * double-check against.
+ */
 export async function requireAdmin(c: Context<AppEnv>, next: Next) {
   const employee = c.get("employee");
-  const headerRole = c.req.header("x-role");
-  if (!employee || employee.role !== "admin" || headerRole !== "admin") {
+  if (!employee || employee.role !== "admin") {
     return c.json({ error: "Admin access required" }, 403);
   }
   await next();

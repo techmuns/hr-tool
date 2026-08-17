@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { AppEnv } from "../auth";
 import { requireEmployee } from "../auth";
 import {
@@ -7,6 +8,7 @@ import {
   revokeAdminSession,
   setAdminSessionCookie,
 } from "../adminSession";
+import { createEmployeeSession, revokeEmployeeSession, setEmployeeSessionCookie } from "../employeeSession";
 import { sendRawEmail } from "../email";
 import { hashPassword, passwordStrengthError, verifyPassword } from "../password";
 import type { Employee } from "../types";
@@ -22,6 +24,18 @@ function publicEmployee(employee: Employee) {
     role: employee.role,
     tier: employee.tier,
   };
+}
+
+/**
+ * Every successful identity check below (demo shortcut, host-relayed email,
+ * OTP) ends here: issue a real server-tracked session and set it as the
+ * hr_session cookie, so this browser's *next* request is verified against
+ * that session rather than anything it merely claims about itself.
+ */
+async function establishEmployeeSession(c: Context<AppEnv>, employeeId: number): Promise<string> {
+  const token = await createEmployeeSession(c.env.DB, employeeId);
+  setEmployeeSessionCookie(c, token);
+  return token;
 }
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -42,12 +56,14 @@ app.post("/login", async (c) => {
     ).first<Employee>();
     if (!admin) return c.json({ error: "No admin account seeded" }, 500);
     const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
+    await establishEmployeeSession(c, admin.id);
     return c.json({ role: "admin", employee: admin, employees: employees.results });
   }
 
   if (text === "hr") {
     const hr = await c.env.DB.prepare("SELECT * FROM employees WHERE tier = 'hr' ORDER BY id LIMIT 1").first<Employee>();
     if (!hr) return c.json({ error: "No HR account yet — ask a founder to assign one" }, 500);
+    await establishEmployeeSession(c, hr.id);
     return c.json({ role: "admin", employee: hr });
   }
 
@@ -56,6 +72,7 @@ app.post("/login", async (c) => {
       "SELECT * FROM employees WHERE role = 'employee' ORDER BY id LIMIT 1"
     ).first<Employee>();
     if (!employee) return c.json({ error: "No employee account seeded" }, 500);
+    await establishEmployeeSession(c, employee.id);
     return c.json({ role: "employee", employee });
   }
 
@@ -64,6 +81,7 @@ app.post("/login", async (c) => {
       .bind(text)
       .first<Employee>();
     if (!employee) return c.json({ error: "No account with that email" }, 404);
+    await establishEmployeeSession(c, employee.id);
     return c.json({ role: employee.role, employee });
   }
 
@@ -112,8 +130,12 @@ app.post("/auth/request-otp", async (c) => {
 });
 
 /**
- * Step 2: verify the code and return the same session payload as /login so the
- * device can start sending x-user-id / x-role on its requests.
+ * Step 2: verify the code, then establish the same server-tracked session
+ * /login does. The raw token is also returned in the body (not just set as a
+ * cookie) for the Chrome extension, which can't rely on the browser's own
+ * cookie jar the way a same-origin page can — see extension/background.js,
+ * which sends it back as `Authorization: Bearer <token>` instead. The web
+ * app's own OTP flow (Login.tsx) ignores this field and relies on the cookie.
  */
 app.post("/auth/verify-otp", async (c) => {
   const body = await c.req
@@ -144,7 +166,19 @@ app.post("/auth/verify-otp", async (c) => {
     return c.json({ error: "No account with that email" }, 404);
   }
 
-  return c.json({ role: employee.role, employee });
+  const token = await establishEmployeeSession(c, employee.id);
+  return c.json({ role: employee.role, employee, token });
+});
+
+/**
+ * Revokes the caller's own base session — both the hr_session cookie (web)
+ * and, if it authenticated via one instead, the Authorization: Bearer token
+ * (extension's "Disconnect"). Always 200: logging out an already-logged-out
+ * caller isn't an error.
+ */
+app.post("/auth/logout", async (c) => {
+  await revokeEmployeeSession(c);
+  return c.json({ ok: true });
 });
 
 /**

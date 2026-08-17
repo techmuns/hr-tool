@@ -40,16 +40,21 @@ Chromium browser** — only the extensions-page URL differs:
 
 ## How it works
 
-The HR tool identifies users with `x-user-id` / `x-role` headers. The extension:
+The HR tool identifies devices with a server-issued session token, sent as an
+`Authorization: Bearer` header. The extension:
 
 1. **Connect once (email OTP)** — you enter your work email; the backend emails
    you a 6-digit code via the Muns email API (`POST /api/auth/request-otp`). You
    enter the code (`POST /api/auth/verify-otp`), which proves you own the
-   address and returns your employee id + role, stored locally in
-   `chrome.storage`.
+   address and returns your employee id/role plus a session token, stored
+   locally in `chrome.storage`. The token is checked against a database row on
+   every request — it can't be edited into a *different* identity the way a
+   plain user-id header could, only invalidated.
 2. **Punch anytime** — a keyboard shortcut (or the popup buttons) sends a
-   `POST` to the clock-in / clock-out endpoint with those headers. You get a
-   desktop notification with the result.
+   `POST` to the clock-in / clock-out endpoint with `Authorization: Bearer
+   <token>`. You get a desktop notification with the result. If the token has
+   expired or been revoked, the extension clears its local state and asks you
+   to reconnect.
 
 The Worker URL (`https://hr-tool.tech-441.workers.dev`) is baked in, so there's
 nothing to configure beyond the one-time email verification.
@@ -109,13 +114,20 @@ both handle updates natively. Ask if you want either set up.
 
 ## Security note
 
-Connecting now requires an email OTP, so a device can only act as an employee
-who can read that employee's inbox. After verification the extension uses the
-same header-based identity (`x-user-id`) as the website for the actual
-clock-in / clock-out calls. If you later want fully device-bound auth
-(`Authorization: Bearer <device-token>`), that's a further backend change: issue
-a signed device token on verify and accept it on `/api/attendance/*`, then swap
-the header for that token in `background.js` — only `background.js` changes.
+Connecting requires an email OTP, so a device can only act as an employee who
+can read that employee's inbox. After verification the extension is fully
+device-bound: `/api/auth/verify-otp` issues a random, unguessable session
+token (hashed and stored server-side, never in plaintext), and every
+subsequent request carries it as `Authorization: Bearer <token>` instead of
+any client-editable identity. Sessions expire after 14 days, and
+**Disconnect** in the popup revokes the token server-side immediately (not
+just locally), so a copied/leaked token doesn't stay valid after you think
+you've disconnected.
+
+> If you're updating from an older build (pre-1.1.0): it used bare
+> `x-user-id` / `x-role` headers, which the backend no longer accepts. Existing
+> connections will start failing with "Not authenticated" — open the popup and
+> reconnect with your email once to get a real session token.
 
 ## Icons
 

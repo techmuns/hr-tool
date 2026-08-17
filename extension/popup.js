@@ -34,8 +34,8 @@ async function post(path, body) {
 }
 
 async function load() {
-  const cfg = await chrome.storage.local.get(["employeeId", "name"]);
-  showStep(cfg.employeeId ? "connected" : "email", cfg.name);
+  const cfg = await chrome.storage.local.get(["employeeId", "name", "token"]);
+  showStep(cfg.employeeId && cfg.token ? "connected" : "email", cfg.name);
 }
 
 async function sendCode() {
@@ -66,7 +66,7 @@ async function verify() {
   setStatus("Verifying…");
   try {
     const { res, data } = await post("/api/auth/verify-otp", { email: pendingEmail, code });
-    if (!res.ok || !data || !data.employee) {
+    if (!res.ok || !data || !data.employee || !data.token) {
       return setStatus((data && data.error) || "Verification failed.", "err");
     }
     const emp = data.employee;
@@ -75,6 +75,7 @@ async function verify() {
       employeeId: emp.id,
       role: data.role || emp.role || "employee",
       name: emp.name || pendingEmail,
+      token: data.token,
     });
     showStep("connected", emp.name || pendingEmail);
     setStatus("Connected. Try the shortcut!", "ok");
@@ -94,10 +95,20 @@ function punch(action) {
 }
 
 async function disconnect() {
-  await chrome.storage.local.remove(["employeeId", "role", "name"]);
+  const { token } = await chrome.storage.local.get(["token"]);
+  await chrome.storage.local.remove(["employeeId", "role", "name", "token"]);
   pendingEmail = "";
   showStep("email");
   setStatus("Disconnected.");
+  if (token) {
+    // Best-effort: revoke the session server-side too, so a copied/leaked
+    // token doesn't stay valid after the user thinks they've disconnected.
+    // Local state is already cleared above regardless of whether this succeeds.
+    fetch(BASE_URL + "/api/auth/logout", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
+  }
 }
 
 function renderUpdate(update) {

@@ -2,6 +2,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Context } from "hono";
 import type { AppEnv } from "./auth";
 import type { Employee } from "./types";
+import { randomSessionToken, sha256Hex } from "./sessionToken";
 
 export const ADMIN_SESSION_COOKIE = "admin_session";
 // Within the 4-8h window asked for: long enough that HR doesn't re-enter a
@@ -9,28 +10,8 @@ export const ADMIN_SESSION_COOKIE = "admin_session";
 // doesn't stay live for days.
 const ADMIN_SESSION_TTL_SECONDS = 6 * 60 * 60;
 
-function randomToken(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  // base64url: no padding, no +/ characters, so it's cookie-safe as-is.
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-/**
- * Only the SHA-256 of the session token is ever stored — same reasoning as
- * hashing passwords. A read of the admin_sessions table (backup, D1 console)
- * can't be replayed as a live cookie.
- */
 export async function createAdminSession(db: D1Database, employeeId: number): Promise<string> {
-  const token = randomToken();
+  const token = randomSessionToken();
   const tokenHash = await sha256Hex(token);
   const expiresAt = new Date(Date.now() + ADMIN_SESSION_TTL_SECONDS * 1000).toISOString();
 

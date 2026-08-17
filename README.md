@@ -7,25 +7,40 @@ binding.
 ## Login
 
 Single text box on `/`. Typing `admin` signs in as HR; typing `employee` signs in
-as a sample employee. Base identity is a demo-grade `x-user-id` / `x-role`
-header pair stored in `localStorage` — fine for telling employees apart, but
-not sufficient on its own for HR/founder (`role = 'admin'`) capability.
+as a sample employee; typing an email address looks that employee up directly
+(the same lookup the Munshot host relay uses). Standalone visitors instead get
+an email OTP (`POST /api/auth/request-otp` → `POST /api/auth/verify-otp`).
 
-**Admin/HR access additionally requires a password.** A `role = 'admin'`
-employee's base session unlocks nothing privileged by itself; they must also
-authenticate with a password via `POST /api/auth/admin-login`, which issues a
-short-lived (6h), HttpOnly, server-tracked session cookie. Every `/admin/*`
-and other privileged endpoint checks that cookie — never the `x-user-id`/
-`x-role` headers, which are plain client-supplied values. First-time setup:
-a privileged employee sets their own password via `POST
-/api/auth/admin-password/set`, gated on their base (OTP/host) session so it
-can only ever touch their own account. See `src/worker/adminSession.ts` and
-`src/worker/routes/auth.ts` for the implementation.
+**Every one of those ends the same way**: the server issues a random,
+unguessable session token (hashed and stored in `employee_sessions`, never in
+plaintext — see `src/worker/employeeSession.ts`) and sets it as the `hr_session`
+HttpOnly cookie. Every request after that is identified by re-checking that
+cookie against the database, never by anything the client merely claims —
+this replaced an earlier `x-user-id` / `x-role` header pair that the client set
+from its own `localStorage`, which meant editing devtools/localStorage was
+enough to become a different employee outright. `role`/`tier` (and therefore
+HR/founder capability) now come straight from that verified session — there's
+no client-supplied value left to double-check against, so admin access needs
+nothing beyond a normal login.
 
-Because the admin session cookie is `Secure`, it only works over HTTPS —
-`npm run dev:worker` (`wrangler dev`) needs `--local-protocol https` to
-exercise the admin-login flow locally; the deployed Worker is HTTPS-only
-already, so this only matters for local dev.
+The Chrome extension (`extension/`) is a second client of the same mechanism:
+`POST /api/auth/verify-otp` also returns the raw token in its response body,
+which the extension stores itself and replays as `Authorization: Bearer
+<token>` (it can't rely on the browser's cookie jar the way a same-origin page
+can). `requireEmployee` (`src/worker/auth.ts`) accepts either the cookie or
+the bearer header, checked against the same table.
+
+Because the session cookie is `Secure`, it only works over HTTPS —
+`npm run dev:worker` (`wrangler dev`) needs `--local-protocol https` to log in
+at all locally; the deployed Worker is HTTPS-only already, so this only
+matters for local dev.
+
+There's also a **separate, currently-unused** password-gated admin session
+(`src/worker/adminSession.ts`, `POST /api/auth/admin-login` /
+`/api/auth/admin-password/set`) left over from an earlier design where
+HR/founder access needed a second password on top of the base login. Nothing
+in the app calls it today — the routes and `admin_sessions`/
+`employee_credentials` tables just sit dormant.
 
 ### Embedding (Munshot iframe)
 

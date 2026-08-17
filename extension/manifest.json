@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "HR Tool Attendance",
   "description": "Clock in and out of the HR tool with a keyboard shortcut — no need to open the site.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "permissions": ["storage", "notifications", "alarms"],
   "host_permissions": ["https://hr-tool.tech-441.workers.dev/*"],
   "background": {
