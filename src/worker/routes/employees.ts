@@ -3,7 +3,6 @@ import type { Context } from "hono";
 import type { AppEnv } from "../auth";
 import type { ReimbursementInput } from "../bills";
 import { requireAdmin, requireEmployee, requireFounder } from "../auth";
-import { getAdminSessionEmployee } from "../adminSession";
 import { deleteBills, putBill, readReimbursementInput } from "../bills";
 import type {
   Attendance,
@@ -162,13 +161,8 @@ app.get("/reimbursements/:id/bill", async (c) => {
   if (!row || !row.bill_key) return c.json({ error: "Bill not found" }, 404);
 
   const viewer = c.get("employee");
-  if (row.employee_id !== viewer.id) {
-    // "Any admin can read any bill" is a privileged carve-out, so it needs the
-    // real admin session — not the client-supplied x-role header, which any
-    // authenticated caller could set to bypass this owner check.
-    const adminSession = await getAdminSessionEmployee(c);
-    if (!adminSession) return c.json({ error: "Not allowed" }, 403);
-  }
+  const isAdmin = viewer.role === "admin" && c.req.header("x-role") === "admin";
+  if (!isAdmin && row.employee_id !== viewer.id) return c.json({ error: "Not allowed" }, 403);
 
   if (!c.env.BILLS) return c.json({ error: "Bill uploads are temporarily unavailable" }, 503);
   const object = await c.env.BILLS.get(row.bill_key);

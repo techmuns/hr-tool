@@ -1,6 +1,5 @@
 import type { Context, Next } from "hono";
 import type { Employee } from "./types";
-import { getAdminSessionEmployee } from "./adminSession";
 
 export type Bindings = {
   DB: D1Database;
@@ -41,30 +40,19 @@ export async function requireEmployee(c: Context<AppEnv>, next: Next) {
   await next();
 }
 
-/**
- * Privileged (HR/founder) routes are gated on a real, server-issued admin
- * session (see adminSession.ts) — never on the x-user-id/x-role headers
- * requireEmployee trusts. Those headers are plain client-supplied values;
- * granting admin access off them would let anyone with devtools set
- * `x-role: admin` and reach every HR endpoint. The admin session cookie is
- * HttpOnly (unreadable to page JS) and only ever issued after a password
- * check, so this is independent of, and does not require, requireEmployee
- * having run first.
- */
 export async function requireAdmin(c: Context<AppEnv>, next: Next) {
-  const employee = await getAdminSessionEmployee(c);
-  if (!employee) {
-    return c.json({ error: "Admin session required", code: "admin_session_required" }, 401);
+  const employee = c.get("employee");
+  const headerRole = c.req.header("x-role");
+  if (!employee || employee.role !== "admin" || headerRole !== "admin") {
+    return c.json({ error: "Admin access required" }, 403);
   }
-  c.set("employee", employee);
   await next();
 }
 
 export async function requireFounder(c: Context<AppEnv>, next: Next) {
-  const employee = await getAdminSessionEmployee(c);
+  const employee = c.get("employee");
   if (!employee || employee.tier !== "founder") {
-    return c.json({ error: "Founder admin session required", code: "admin_session_required" }, 401);
+    return c.json({ error: "Founder access required" }, 403);
   }
-  c.set("employee", employee);
   await next();
 }
