@@ -1,6 +1,11 @@
-import { getSession } from "./session";
+import { clearSession, getSession } from "./session";
 import { currentMonth } from "./date";
 import type { Attendance, Employee, LeaveRequest, Reimbursement } from "./types";
+
+/** Fired whenever a request comes back 401 so the app can drop the stale
+ *  session and send the person back through the OTP login flow, instead of
+ *  leaving components stuck showing a raw "Not authenticated" error. */
+export const SESSION_EXPIRED_EVENT = "hr:session-expired";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const session = getSession();
@@ -22,6 +27,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const errorMessage = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;
     const error = new Error(errorMessage || `Request failed (${res.status})`) as Error & { code?: string };
     if (data && typeof data === "object" && "code" in data) error.code = (data as { code?: string }).code;
+    if (res.status === 401 && session) {
+      // The local session no longer matches a real employee (deleted, or a
+      // stale localStorage entry from another deploy) — drop it and tell the
+      // app to fall back to login rather than repeatedly hitting this branch.
+      clearSession();
+      clearApiCache();
+      window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+    }
     throw error;
   }
   return data as T;
