@@ -4,7 +4,7 @@ import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
 import { AdminDashboard } from "./admin/AdminDashboard";
 import { clearSession, getSession, setSession } from "./session";
-import { api, clearApiCache } from "./api";
+import { api, clearApiCache, SESSION_EXPIRED_EVENT } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
 import type { SessionContext } from "./lib/sdk";
 import type { Employee, EmployeeRole, Tier } from "./types";
@@ -66,6 +66,24 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
   function refresh() {
     setSessionState(getSession());
   }
+
+  // A 401 anywhere means the local session no longer matches a real employee
+  // (deleted, or stale from another deploy) — api.ts already cleared it;
+  // drop it here too and send the person back through login rather than
+  // leaving the UI stuck showing "Not authenticated" on every card.
+  useEffect(() => {
+    function onSessionExpired() {
+      setSessionState(null);
+      if (host.email) {
+        // Let the host-identity effect below re-run and try logging back in.
+        resolvedEmail.current = null;
+        setHostStatus("resolving");
+        setHostError(null);
+      }
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [host.email]);
 
   // Embedded: sign in as the Munshot-authenticated user, identified by the
   // email the host provides. This overrides any stale local (OTP) session so
