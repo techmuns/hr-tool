@@ -39,6 +39,12 @@ time to override the real muns.io origin(s); left unset, it falls back to the
 `https://chat.muns.io`) rather than an empty list, so this never silently
 degrades to "accept everything."
 
+`docs/munshot-jwt-embed-prompt.md` is a self-contained, copy-pasteable prompt
+describing this whole handshake — SDK setup, origin allow-list, context
+contract, validation, and the verified vendor-SDK behaviour it relies on — for
+bringing the same "take the JWT from the host iframe automatically" flow to
+another dashboard.
+
 **No wildcards.** The vendor SDK matches origins with an exact `Set.has()` —
 it drops anything else before this app's own code even runs, so a pattern
 like `*.muns.io` would silently match nothing. If Munshot ever embeds this
