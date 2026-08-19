@@ -67,32 +67,13 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
     setSessionState(getSession());
   }
 
-  // A 401 anywhere means the local session no longer matches a real employee
-  // (deleted, or stale from another deploy) — api.ts already cleared it;
-  // drop it here too and send the person back through login rather than
-  // leaving the UI stuck showing "Not authenticated" on every card.
-  useEffect(() => {
-    function onSessionExpired() {
-      setSessionState(null);
-      if (host.email) {
-        // Let the host-identity effect below re-run and try logging back in.
-        resolvedEmail.current = null;
-        setHostStatus("resolving");
-        setHostError(null);
-      }
-    }
-    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
-    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
-  }, [host.email]);
-
   // Embedded: sign in as the Munshot-authenticated user, identified by the
   // email the host provides. This overrides any stale local (OTP) session so
   // the dashboard always shows the person Munshot logged in — not whoever last
-  // used this browser.
-  useEffect(() => {
-    const email = host.email;
-    if (!email) return;
-    if (resolvedEmail.current === email) return;
+  // used this browser. Also called directly (not just from the mount effect
+  // below) after a 401 clears the session, so a stale session actually gets
+  // re-authenticated instead of leaving the UI stuck on "Signing you in…".
+  function loginWithHostEmail(email: string) {
     resolvedEmail.current = email;
     setHostStatus("resolving");
     setHostError(null);
@@ -114,6 +95,28 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
         );
         setHostStatus("error");
       });
+  }
+
+  // A 401 anywhere means the local session no longer matches a real employee
+  // (deleted, or stale from another deploy) — api.ts already cleared it;
+  // drop it here too and send the person back through login rather than
+  // leaving the UI stuck showing "Not authenticated" on every card.
+  useEffect(() => {
+    function onSessionExpired() {
+      setSessionState(null);
+      if (host.email) {
+        loginWithHostEmail(host.email);
+      }
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired);
+  }, [host.email]);
+
+  useEffect(() => {
+    const email = host.email;
+    if (!email) return;
+    if (resolvedEmail.current === email) return;
+    loginWithHostEmail(email);
   }, [host.email]);
 
   // While the host identity is being resolved, don't render the previous user.
