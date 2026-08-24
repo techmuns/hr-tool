@@ -15,8 +15,12 @@ interface EditRow {
 /**
  * HR-only notepad for the daily reimbursement breakup. HR picks a cycle and a
  * person, writes labelled lines with amounts, and saves; payroll then reimburses
- * HALF the logged total and shows the breakup in the Payroll reimbursements
- * dropdown. Founders don't see this tab (they can view the breakup on Payroll).
+ * HALF the logged total by default and shows the breakup in the Payroll
+ * reimbursements dropdown. The "100% instead of 50%" checkbox is an
+ * admin-only override — it's part of this HR-only form, so only HR/founder
+ * (role=admin) accounts can ever reach it; the backend re-checks tier === 'hr'
+ * on save regardless of what the client sends. Founders don't see this tab
+ * (they can view the breakup on Payroll).
  */
 export function ReimbursementNotes() {
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
@@ -24,6 +28,7 @@ export function ReimbursementNotes() {
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rows, setRows] = useState<EditRow[]>([]);
+  const [fullReimbursement, setFullReimbursement] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -58,6 +63,7 @@ export function ReimbursementNotes() {
         ? existing.entries.map((e) => ({ label: e.label, amount: (e.amount / 100).toFixed(2) }))
         : [{ label: "", amount: "" }],
     );
+    setFullReimbursement(existing?.full_reimbursement ?? false);
   }
 
   function updateRow(i: number, field: keyof EditRow, value: string) {
@@ -82,9 +88,13 @@ export function ReimbursementNotes() {
         employee_id: selectedId,
         period,
         entries,
+        full_reimbursement: fullReimbursement,
       });
       setBreakups((m) => ({ ...m, [selectedId]: saved }));
-      setStatus(`Saved — reimbursing ${formatINR(Math.round(totalPaise / 2))} (50% of ${formatINR(totalPaise)}).`);
+      const reimbursed = fullReimbursement ? totalPaise : Math.round(totalPaise / 2);
+      setStatus(
+        `Saved — reimbursing ${formatINR(reimbursed)} (${fullReimbursement ? "100%" : "50%"} of ${formatINR(totalPaise)}).`,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -110,7 +120,8 @@ export function ReimbursementNotes() {
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Payroll reimburses{" "}
-        <b>50%</b> of the total you enter, and shows this breakup in the Payroll reimbursements dropdown.
+        <b>50%</b> of the total you enter by default, and shows this breakup in the Payroll reimbursements
+        dropdown. Admins can switch a cycle to reimburse the full amount instead.
       </p>
 
       <div className="row">
@@ -135,6 +146,14 @@ export function ReimbursementNotes() {
 
       {selected && (
         <div style={{ marginTop: 12 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
+            <input
+              type="checkbox"
+              checked={fullReimbursement}
+              onChange={(e) => setFullReimbursement(e.target.checked)}
+            />
+            Reimburse 100% instead of 50% (admin-only)
+          </label>
           <table>
             <thead>
               <tr>
@@ -188,9 +207,9 @@ export function ReimbursementNotes() {
                 <td></td>
               </tr>
               <tr>
-                <td className="muted">Reimbursed (50%)</td>
+                <td className="muted">Reimbursed ({fullReimbursement ? "100%" : "50%"})</td>
                 <td className="muted" style={{ textAlign: "right" }}>
-                  {formatINR(Math.round(totalPaise / 2))}
+                  {formatINR(fullReimbursement ? totalPaise : Math.round(totalPaise / 2))}
                 </td>
                 <td></td>
               </tr>
