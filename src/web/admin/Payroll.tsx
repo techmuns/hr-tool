@@ -8,7 +8,6 @@ import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate, periodForDate } from "../../worker/payslip";
-import { getSession } from "../session";
 import { AdjustmentsSection } from "./Adjustments";
 import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
 
@@ -25,22 +24,18 @@ function parseEntries(json: string | null): BreakupEntry[] {
 /**
  * The daily reimbursement breakup HR logged, shown when the reimbursements
  * total is clicked. The entries themselves stay read-only here (HR edits the
- * notepad lines in the Reimb. Notes tab); the one thing this dropdown lets an
- * HR admin flip directly is the 50%/100% switch, since that's the decision
- * someone reviewing payroll actually needs in the moment. Founders can see
- * the breakup but the switch is disabled for them, same restriction the PUT
- * enforces server-side.
+ * notepad lines in the Reimb. Notes tab); the one thing this dropdown lets any
+ * admin — HR or founder — flip directly is the 50%/100% switch, since that's
+ * the decision someone reviewing payroll actually needs in the moment.
  */
 function BreakupDropdown({
   row,
   onClose,
-  canEdit,
   saving,
   onToggleFull,
 }: {
   row: AdminPayrollRow;
   onClose: () => void;
-  canEdit: boolean;
   saving: boolean;
   onToggleFull: () => void;
 }) {
@@ -101,26 +96,20 @@ function BreakupDropdown({
             </tr>
           </tfoot>
         </table>
-        {canEdit ? (
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              marginTop: 10,
-              paddingTop: 8,
-              borderTop: "1px solid var(--border)",
-              fontSize: 12,
-            }}
-          >
-            <input type="checkbox" checked={full} disabled={saving} onChange={onToggleFull} />
-            {saving ? "Saving…" : "Reimburse 100% instead of 50%"}
-          </label>
-        ) : (
-          <div className="muted" style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--border)", fontSize: 12 }}>
-            Only HR can switch this to 100% (Reimb. Notes tab).
-          </div>
-        )}
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 10,
+            paddingTop: 8,
+            borderTop: "1px solid var(--border)",
+            fontSize: 12,
+          }}
+        >
+          <input type="checkbox" checked={full} disabled={saving} onChange={onToggleFull} />
+          {saving ? "Saving…" : "Reimburse 100% instead of 50%"}
+        </label>
       </div>
     </>
   );
@@ -164,8 +153,6 @@ export function Payroll() {
   const [openBreakup, setOpenBreakup] = useState<number | null>(null);
   // Which row's 50%/100% switch is mid-save (by employee_id).
   const [savingFullId, setSavingFullId] = useState<number | null>(null);
-  // Same rule the PUT enforces server-side: only HR tier can edit a breakup.
-  const canEditBreakup = getSession()?.tier === "hr";
   const [emailingIds, setEmailingIds] = useState<number[]>([]);
   const [result, setResult] = useState<EmailResult | null>(null);
   // Who gets a payslip on the next bulk send. Seeded from the loaded rows, then
@@ -311,17 +298,16 @@ export function Payroll() {
   }
 
   // Flips a cycle's reimbursement between the standard 50% and the full
-  // logged total, straight from the Payroll table's breakup dropdown. Resends
-  // the same entries the row already has — this is a toggle, not an edit of
-  // the notepad lines themselves — and reloads so net pay reflects it at once.
+  // logged total, straight from the Payroll table's breakup dropdown. Any
+  // admin — HR or founder — can do this; it's a narrower permission than
+  // editing the notepad lines themselves, which stays HR-only on its own tab.
   async function toggleFullReimbursement(row: AdminPayrollRow) {
     setSavingFullId(row.employee_id);
     setError(null);
     try {
-      await api.put("/admin/reimbursement-breakup", {
+      await api.patch("/admin/reimbursement-breakup/full", {
         employee_id: row.employee_id,
         period: row.period,
-        entries: parseEntries(row.reimbursement_breakup_entries),
         full_reimbursement: row.reimbursement_breakup_full !== 1,
       });
       load({ silent: true, keepSelection: true });
@@ -481,7 +467,6 @@ export function Payroll() {
                       <BreakupDropdown
                         row={row}
                         onClose={() => setOpenBreakup(null)}
-                        canEdit={canEditBreakup}
                         saving={savingFullId === row.employee_id}
                         onToggleFull={() => toggleFullReimbursement(row)}
                       />

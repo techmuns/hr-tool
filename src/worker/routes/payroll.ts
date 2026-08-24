@@ -105,15 +105,11 @@ app.get("/admin/reimbursement-breakup", async (c) => {
 
 /**
  * Save an employee's reimbursement breakup for a cycle — HR ONLY (founders can
- * view it but not edit). Stores the notepad lines + their total; payroll then
- * reimburses half that total, or the full total when `full_reimbursement` is
- * set (syncPayroll, run here so the figure updates at once). Amounts are in
+ * view it but not edit the notepad lines themselves; see the PATCH below for
+ * the one thing they CAN do). Stores the notepad lines + their total; payroll
+ * then reimburses half that total, or the full total when `full_reimbursement`
+ * is set (syncPayroll, run here so the figure updates at once). Amounts are in
  * paise.
- *
- * `full_reimbursement` is gated the same as the rest of this endpoint — the
- * whole route group requires the admin role (see requireAdmin above), and only
- * HR tier can write here at all, so flipping a cycle to 100% is already an
- * admin-only action, same as everything else on this form.
  */
 app.put("/admin/reimbursement-breakup", async (c) => {
   const editor = c.get("employee");
@@ -162,6 +158,46 @@ app.put("/admin/reimbursement-breakup", async (c) => {
   await syncPayroll(c.env.DB, period);
 
   return c.json({ employee_id: employeeId, period, entries, total, full_reimbursement: fullReimbursement });
+});
+
+/**
+ * Flip a cycle's reimbursement between the standard 50% and the full logged
+ * total — the one edit ANY admin can make here, HR or founder. Unlike the PUT
+ * above it never touches the notepad lines or creates a breakup; there must
+ * already be one (404s otherwise), and only `full_reimbursement` changes.
+ * That's a narrower, safer permission than rewriting the entries themselves,
+ * which stays HR-only, so this gets its own route rather than loosening the
+ * PUT's tier check.
+ */
+app.patch("/admin/reimbursement-breakup/full", async (c) => {
+  const editor = c.get("employee");
+  const body = await c.req
+    .json<{ employee_id?: number; period?: string; full_reimbursement?: boolean }>()
+    .catch(() => ({}) as { employee_id?: number; period?: string; full_reimbursement?: boolean });
+
+  const employeeId = Number(body.employee_id);
+  const period = typeof body.period === "string" ? body.period : "";
+  if (!Number.isInteger(employeeId)) return c.json({ error: "employee_id is required" }, 400);
+  if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
+  const fullReimbursement = body.full_reimbursement === true;
+
+  const result = await c.env.DB.prepare(
+    `UPDATE reimbursement_breakups
+        SET full_reimbursement = ?, updated_at = datetime('now'), updated_by = ?
+      WHERE employee_id = ? AND period = ?`,
+  )
+    .bind(fullReimbursement ? 1 : 0, editor.id, employeeId, period)
+    .run();
+
+  if (!result.meta.changes) {
+    return c.json({ error: "No reimbursement breakup logged for this employee this cycle" }, 404);
+  }
+
+  // Recompute so the Payroll tab reflects it immediately. No-op on a cycle
+  // already marked paid (those stay frozen).
+  await syncPayroll(c.env.DB, period);
+
+  return c.json({ employee_id: employeeId, period, full_reimbursement: fullReimbursement });
 });
 
 /**
