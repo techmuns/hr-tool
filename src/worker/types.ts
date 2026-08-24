@@ -221,22 +221,36 @@ export interface AdminPayrollRow extends PayrollWithName {
   /** Days HR manually flagged work-from-home this cycle (nothing is inferred). */
   wfh_days: number;
   /**
-   * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
-   * above already reflects HALF of this total, or ALL of it when an admin has
-   * flipped `reimbursement_breakup_full` on; the raw total and entries are
-   * here so the Payroll tab can show the full breakdown in a dropdown. Null
-   * when HR hasn't entered one (approved requests stand).
+   * HR's manual reimbursement breakup for this cycle, if any — the raw logged
+   * total and the lines behind it, so the Payroll tab can show the breakdown
+   * in a dropdown. `reimbursements` above is what payroll actually pays of it:
+   * each line halved or paid in full per its own flag. Null when HR hasn't
+   * entered one (approved requests stand).
    */
   reimbursement_breakup_total: number | null;
   reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
-  /** 1 when this breakup pays out in full instead of the standard 50%. */
+  /**
+   * 1 when EVERY line of this breakup pays out in full. A mix of rates reads
+   * as 0 here — the per-line flags in the entries JSON are the real state.
+   */
   reimbursement_breakup_full: number | null;
+  /** What payroll pays out of the logged total, i.e. `reimbursements` above. */
+  reimbursement_breakup_reimbursed: number | null;
 }
 
 /** One labelled line in HR's daily reimbursement notepad; amount in paise. */
 export interface BreakupEntry {
   label: string;
   amount: number;
+  /**
+   * Reimburse this line in full instead of the standard 50%. Set per line, so
+   * one date can be covered fully while the rest of the cycle is halved.
+   *
+   * Absent on rows written before the flag existed — those were logged under
+   * the breakup-wide `full_reimbursement` switch, which is what the read path
+   * falls back to. See ./reimbursementMath.ts.
+   */
+  full?: boolean;
 }
 
 /** HR's reimbursement notepad for one employee in one pay cycle. */
@@ -244,8 +258,11 @@ export interface ReimbursementBreakup {
   employee_id: number;
   period: string;
   entries: BreakupEntry[];
+  /** The raw amount HR logged, in paise — before any 50%/100% decision. */
   total: number;
-  /** Admin-only: pays out the FULL total instead of the standard 50%. */
+  /** What payroll actually pays out of `total`, summed per line, in paise. */
+  reimbursed_total: number;
+  /** Derived: every line is at 100%. Kept in sync on write, never the source. */
   full_reimbursement: boolean;
   updated_at: string;
 }

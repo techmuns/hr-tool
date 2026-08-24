@@ -151,21 +151,18 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
     unpaidLeaveDaysByEmployee(db, cycle),
     approvedReimbursementsByEmployee(db, cycle),
     manualDeductionsByEmployee(db, period),
-    db.prepare("SELECT employee_id, total, full_reimbursement FROM reimbursement_breakups WHERE period = ?")
+    db.prepare("SELECT employee_id, reimbursed_total FROM reimbursement_breakups WHERE period = ?")
       .bind(period)
-      .all<{ employee_id: number; total: number; full_reimbursement: number }>(),
+      .all<{ employee_id: number; reimbursed_total: number }>(),
   ]);
 
-  // When HR has logged a reimbursement breakup for someone this cycle, payroll
-  // reimburses that notepad total and it OVERRIDES the approved-request sum.
-  // By default it's HALF the total; an admin can flip full_reimbursement to
-  // pay the FULL amount instead. Where there's no breakup, the approved
-  // requests stand as before.
+  // When HR has logged a reimbursement breakup for someone this cycle, it
+  // OVERRIDES the approved-request sum. `reimbursed_total` is already the
+  // payout — each line halved or paid in full per its own flag, summed on
+  // write (see ./reimbursementMath.ts), so there is no rate to apply here.
+  // Where there's no breakup, the approved requests stand as before.
   const breakupAmount = new Map(
-    (breakupRows.results ?? []).map((r) => [
-      r.employee_id,
-      r.full_reimbursement ? r.total : Math.round(r.total / 2),
-    ]),
+    (breakupRows.results ?? []).map((r) => [r.employee_id, r.reimbursed_total]),
   );
 
   const upsert = db.prepare(

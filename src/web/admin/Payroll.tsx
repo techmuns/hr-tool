@@ -8,6 +8,7 @@ import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate, periodForDate } from "../../worker/payslip";
+import { allFull, rateLabel } from "../../worker/reimbursementMath";
 import { AdjustmentsSection } from "./Adjustments";
 import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
 
@@ -22,26 +23,49 @@ function parseEntries(json: string | null): BreakupEntry[] {
 }
 
 /**
+ * "50%", "100%" or "Mixed" for a payroll row's breakup — the badge next to the
+ * amount. "Mixed" is the state that only exists because rates are per date, so
+ * it has to be visible from the table rather than only inside the dropdown.
+ */
+function breakupRate(row: AdminPayrollRow): string {
+  return rateLabel(parseEntries(row.reimbursement_breakup_entries), row.reimbursement_breakup_full === 1);
+}
+
+/**
  * The daily reimbursement breakup HR logged, shown when the reimbursements
- * total is clicked. The entries themselves stay read-only here (HR edits the
- * notepad lines in the Reimb. Notes tab); the one thing this dropdown lets any
- * admin — HR or founder — flip directly is the 50%/100% switch, since that's
- * the decision someone reviewing payroll actually needs in the moment.
+ * figure is clicked.
+ *
+ * The lines themselves stay read-only here — HR writes them in the Reimb.
+ * Notes tab — but the 50%/100% rate on each one is editable by any admin, HR
+ * or founder. That's per DATE, not per breakup: covering one day's client
+ * travel in full while the rest of the cycle stays at half is the actual
+ * decision someone reviewing dues makes, and it's the reason each line has its
+ * own pill rather than the whole card having one switch.
  */
 function BreakupDropdown({
   row,
   onClose,
   saving,
-  onToggleFull,
+  onToggleEntry,
+  onToggleAll,
 }: {
   row: AdminPayrollRow;
   onClose: () => void;
   saving: boolean;
-  onToggleFull: () => void;
+  onToggleEntry: (index: number, entry: BreakupEntry) => void;
+  onToggleAll: (full: boolean) => void;
 }) {
-  const entries = parseEntries(row.reimbursement_breakup_entries);
+  // Lines written before per-line rates carry no flag; they were logged under
+  // the breakup-wide switch, so that is what each of them meant.
+  const wasFull = row.reimbursement_breakup_full === 1;
+  const entries = parseEntries(row.reimbursement_breakup_entries).map((e) => ({
+    ...e,
+    full: e.full ?? wasFull,
+  }));
   const total = row.reimbursement_breakup_total ?? 0;
-  const full = row.reimbursement_breakup_full === 1;
+  const reimbursed = row.reimbursement_breakup_reimbursed ?? row.reimbursements;
+  const everyLineFull = allFull(entries);
+
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={onClose} />
@@ -52,7 +76,7 @@ function BreakupDropdown({
           top: "100%",
           left: 0,
           marginTop: 4,
-          minWidth: 250,
+          minWidth: 290,
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: 8,
@@ -62,18 +86,37 @@ function BreakupDropdown({
           whiteSpace: "normal",
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Daily reimbursement breakup</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>Daily reimbursement breakup</div>
+        <div className="muted" style={{ fontSize: 11, marginBottom: 6 }}>
+          Click a date's pill to pay that day in full.
+        </div>
         <table style={{ width: "100%", fontSize: 13 }}>
           <tbody>
             {entries.map((e, i) => (
               <tr key={i}>
                 <td style={{ padding: "2px 0" }}>{e.label || <span className="muted">—</span>}</td>
                 <td style={{ padding: "2px 0", textAlign: "right" }}>{formatINR(e.amount)}</td>
+                <td style={{ padding: "2px 0 2px 8px", textAlign: "right" }}>
+                  <button
+                    type="button"
+                    className="pct-toggle"
+                    data-full={e.full ? "1" : "0"}
+                    disabled={saving}
+                    title={
+                      e.full
+                        ? `${e.label || "This line"} is paid in full — click for 50%`
+                        : `${e.label || "This line"} is paid at 50% — click to pay ${formatINR(e.amount)} in full`
+                    }
+                    onClick={() => onToggleEntry(i, e)}
+                  >
+                    {e.full ? "100%" : "50%"}
+                  </button>
+                </td>
               </tr>
             ))}
             {entries.length === 0 && (
               <tr>
-                <td className="muted" colSpan={2}>
+                <td className="muted" colSpan={3}>
                   No entries logged.
                 </td>
               </tr>
@@ -82,34 +125,39 @@ function BreakupDropdown({
           <tfoot>
             <tr style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "4px 0" }}>Total logged</td>
-              <td style={{ padding: "4px 0", textAlign: "right" }}>
+              <td style={{ padding: "4px 0", textAlign: "right" }} colSpan={2}>
                 <b>{formatINR(total)}</b>
               </td>
             </tr>
             <tr>
               <td style={{ padding: "2px 0" }} className="muted">
-                Reimbursed ({full ? "100%" : "50%"})
+                Reimbursed
               </td>
-              <td style={{ padding: "2px 0", textAlign: "right" }} className="muted">
-                {formatINR(full ? total : Math.round(total / 2))}
+              <td style={{ padding: "2px 0", textAlign: "right" }} className="muted" colSpan={2}>
+                {formatINR(reimbursed)}
               </td>
             </tr>
           </tfoot>
         </table>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            marginTop: 10,
-            paddingTop: 8,
-            borderTop: "1px solid var(--border)",
-            fontSize: 12,
-          }}
-        >
-          <input type="checkbox" checked={full} disabled={saving} onChange={onToggleFull} />
-          {saving ? "Saving…" : "Reimburse 100% instead of 50%"}
-        </label>
+        {entries.length > 0 && (
+          <div
+            style={{
+              marginTop: 10,
+              paddingTop: 8,
+              borderTop: "1px solid var(--border)",
+              fontSize: 12,
+            }}
+          >
+            <button
+              type="button"
+              className="link-btn"
+              disabled={saving}
+              onClick={() => onToggleAll(!everyLineFull)}
+            >
+              {saving ? "Saving…" : everyLineFull ? "Set every date back to 50%" : "Pay every date in full"}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -297,18 +345,28 @@ export function Payroll() {
     }
   }
 
-  // Flips a cycle's reimbursement between the standard 50% and the full
-  // logged total, straight from the Payroll table's breakup dropdown. Any
-  // admin — HR or founder — can do this; it's a narrower permission than
-  // editing the notepad lines themselves, which stays HR-only on its own tab.
-  async function toggleFullReimbursement(row: AdminPayrollRow) {
+  /**
+   * Move one date — or the whole breakup — between 50% and 100%, from the
+   * Payroll table's breakup dropdown. Any admin can do this: it only changes
+   * the rate on lines HR already logged, never the lines themselves.
+   *
+   * `expectedAmount` pins the indexed form to the line the user actually
+   * clicked, so if HR edited the breakup in the meantime the server refuses
+   * rather than paying out a different date in full.
+   */
+  async function setReimbursementRate(
+    row: AdminPayrollRow,
+    full: boolean,
+    entry?: { index: number; amount: number },
+  ) {
     setSavingFullId(row.employee_id);
     setError(null);
     try {
       await api.patch("/admin/reimbursement-breakup/full", {
         employee_id: row.employee_id,
         period: row.period,
-        full_reimbursement: row.reimbursement_breakup_full !== 1,
+        full_reimbursement: full,
+        ...(entry ? { entry_index: entry.index, expected_amount: entry.amount } : {}),
       });
       load({ silent: true, keepSelection: true });
     } catch (err) {
@@ -455,20 +513,31 @@ export function Payroll() {
               <td>
                 {row.reimbursement_breakup_entries ? (
                   <span style={{ position: "relative", display: "inline-block" }}>
+                    {/* Amount and rate on one control: the badge says whether
+                        this cycle is at 50%, 100% or a mix of the two without
+                        anything being opened, and opening it is where the
+                        per-date pills are. */}
                     <button
                       type="button"
                       className="link-btn"
-                      title={`View HR's daily breakup (payroll reimburses ${row.reimbursement_breakup_full === 1 ? "100%" : "50%"} of it)`}
+                      title="View HR's daily breakup and set each date's 50%/100% rate"
                       onClick={() => setOpenBreakup(openBreakup === row.employee_id ? null : row.employee_id)}
                     >
-                      {formatINR(row.reimbursements)} ▾
+                      {formatINR(row.reimbursements)}{" "}
+                      <span className="pct-badge" data-rate={breakupRate(row)}>
+                        {savingFullId === row.employee_id ? "…" : breakupRate(row)}
+                      </span>{" "}
+                      ▾
                     </button>
                     {openBreakup === row.employee_id && (
                       <BreakupDropdown
                         row={row}
                         onClose={() => setOpenBreakup(null)}
                         saving={savingFullId === row.employee_id}
-                        onToggleFull={() => toggleFullReimbursement(row)}
+                        onToggleEntry={(index, entry) =>
+                          setReimbursementRate(row, !entry.full, { index, amount: entry.amount })
+                        }
+                        onToggleAll={(full) => setReimbursementRate(row, full)}
                       />
                     )}
                   </span>

@@ -10,17 +10,25 @@ import type { BreakupEntry, Employee, ReimbursementBreakup } from "../types";
 interface EditRow {
   label: string;
   amount: string; // rupees, as typed
+  /** Reimburse this one line in full instead of the standard 50%. */
+  full: boolean;
+}
+
+/** Paise for one edit row, from the rupees the user typed. */
+function rowPaise(r: EditRow): number {
+  return Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100));
 }
 
 /**
  * HR-only notepad for the daily reimbursement breakup. HR picks a cycle and a
- * person, writes labelled lines with amounts, and saves; payroll then reimburses
- * HALF the logged total by default and shows the breakup in the Payroll
- * reimbursements dropdown. The "100% instead of 50%" checkbox is an
- * admin-only override — it's part of this HR-only form, so only HR/founder
- * (role=admin) accounts can ever reach it; the backend re-checks tier === 'hr'
- * on save regardless of what the client sends. Founders don't see this tab
- * (they can view the breakup on Payroll).
+ * person, writes labelled lines with amounts, and saves; payroll then shows the
+ * breakup in the Payroll reimbursements dropdown.
+ *
+ * Each line carries its own 50%/100% rate — a day's client travel can be
+ * covered in full while the rest of the cycle is halved — so the payout is a
+ * per-line sum, not a percentage of the total. Founders don't see this tab, but
+ * they can change those rates from the Payroll tab; only HR can add, remove or
+ * re-label the lines, which the backend re-checks on save.
  */
 export function ReimbursementNotes() {
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
@@ -60,17 +68,32 @@ export function ReimbursementNotes() {
     const existing = breakups[id];
     setRows(
       existing && existing.entries.length
-        ? existing.entries.map((e) => ({ label: e.label, amount: (e.amount / 100).toFixed(2) }))
-        : [{ label: "", amount: "" }],
+        ? existing.entries.map((e) => ({
+            label: e.label,
+            amount: (e.amount / 100).toFixed(2),
+            // The GET resolves legacy flagless lines against the row's switch,
+            // so `full` is already the truth for each line by the time it lands.
+            full: e.full === true,
+          }))
+        : [{ label: "", amount: "", full: false }],
     );
-    setFullReimbursement(existing?.full_reimbursement ?? false);
   }
 
-  function updateRow(i: number, field: keyof EditRow, value: string) {
+  function updateRow(i: number, field: "label" | "amount", value: string) {
     setRows((rs) => rs.map((r, k) => (k === i ? { ...r, [field]: value } : r)));
   }
 
-  const totalPaise = rows.reduce((s, r) => s + Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)), 0);
+  function toggleRowFull(i: number) {
+    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, full: !r.full } : r)));
+  }
+
+  const totalPaise = rows.reduce((s, r) => s + rowPaise(r), 0);
+  // Same per-line arithmetic the server will do, so the preview and the saved
+  // figure cannot disagree.
+  const reimbursedPaise = rows.reduce(
+    (s, r) => s + (r.full ? rowPaise(r) : Math.round(rowPaise(r) / 2)),
+    0,
+  );
 
   async function save() {
     if (selectedId == null) return;
@@ -79,22 +102,15 @@ export function ReimbursementNotes() {
     setStatus(null);
     try {
       const entries: BreakupEntry[] = rows
-        .map((r) => ({
-          label: r.label.trim(),
-          amount: Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)),
-        }))
+        .map((r) => ({ label: r.label.trim(), amount: rowPaise(r), full: r.full }))
         .filter((e) => e.label !== "" || e.amount > 0);
       const saved = await api.put<ReimbursementBreakup>("/admin/reimbursement-breakup", {
         employee_id: selectedId,
         period,
         entries,
-        full_reimbursement: fullReimbursement,
       });
       setBreakups((m) => ({ ...m, [selectedId]: saved }));
-      const reimbursed = fullReimbursement ? totalPaise : Math.round(totalPaise / 2);
-      setStatus(
-        `Saved — reimbursing ${formatINR(reimbursed)} (${fullReimbursement ? "100%" : "50%"} of ${formatINR(totalPaise)}).`,
-      );
+      setStatus(`Saved — reimbursing ${formatINR(saved.reimbursed_total)} of ${formatINR(saved.total)} logged.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -120,8 +136,8 @@ export function ReimbursementNotes() {
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Payroll reimburses{" "}
-        <b>50%</b> of the total you enter by default, and shows this breakup in the Payroll reimbursements
-        dropdown. Admins can switch a cycle to reimburse the full amount instead.
+        <b>50%</b> of each line by default; use the pill on a line to pay that day in full. The breakup
+        also shows in the Payroll reimbursements dropdown, where the same rates can be changed.
       </p>
 
       <div className="row">
@@ -146,19 +162,14 @@ export function ReimbursementNotes() {
 
       {selected && (
         <div style={{ marginTop: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={fullReimbursement}
-              onChange={(e) => setFullReimbursement(e.target.checked)}
-            />
-            Reimburse 100% instead of 50% (admin-only)
-          </label>
           <table>
             <thead>
               <tr>
                 <th>Note / day</th>
                 <th style={{ width: 160 }}>Amount (INR)</th>
+                <th style={{ width: 70 }} title="What payroll covers of this line">
+                  Rate
+                </th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
@@ -186,6 +197,21 @@ export function ReimbursementNotes() {
                   <td>
                     <button
                       type="button"
+                      className="pct-toggle"
+                      data-full={r.full ? "1" : "0"}
+                      title={
+                        r.full
+                          ? "Paid in full — click to reimburse 50% of this line"
+                          : "Paid at 50% — click to reimburse this line in full"
+                      }
+                      onClick={() => toggleRowFull(i)}
+                    >
+                      {r.full ? "100%" : "50%"}
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
                       className="row-remove-btn"
                       title="Remove line"
                       onClick={() => setRows((rs) => rs.filter((_, k) => k !== i))}
@@ -199,19 +225,23 @@ export function ReimbursementNotes() {
             <tfoot>
               <tr>
                 <td>
-                  <button type="button" className="link-btn" onClick={() => setRows((rs) => [...rs, { label: "", amount: "" }])}>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setRows((rs) => [...rs, { label: "", amount: "", full: false }])}
+                  >
                     + Add line
                   </button>
                 </td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatINR(totalPaise)}</td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
               <tr>
-                <td className="muted">Reimbursed ({fullReimbursement ? "100%" : "50%"})</td>
+                <td className="muted">Reimbursed</td>
                 <td className="muted" style={{ textAlign: "right" }}>
-                  {formatINR(fullReimbursement ? totalPaise : Math.round(totalPaise / 2))}
+                  {formatINR(reimbursedPaise)}
                 </td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>

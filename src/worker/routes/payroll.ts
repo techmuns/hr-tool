@@ -5,7 +5,8 @@ import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
 import { payslipHtml, payslipSubject, payCycle } from "../payslip";
 import { syncPayroll } from "../payrollCalc";
-import type { AdminPayrollRow } from "../types";
+import { allFull, loggedTotal, reimbursedTotal } from "../reimbursementMath";
+import type { AdminPayrollRow, BreakupEntry } from "../types";
 
 const app = new Hono<AppEnv>();
 
@@ -31,6 +32,7 @@ app.get("/admin/payroll", async (c) => {
             rb.total AS reimbursement_breakup_total,
             rb.entries AS reimbursement_breakup_entries,
             rb.full_reimbursement AS reimbursement_breakup_full,
+            rb.reimbursed_total AS reimbursement_breakup_reimbursed,
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present'
                  AND a.work_date BETWEEN ? AND ?) AS present_days,
@@ -52,7 +54,7 @@ app.get("/admin/payroll", async (c) => {
   return c.json(rows.results);
 });
 
-function safeParseEntries(json: string): { label: string; amount: number }[] {
+function safeParseEntries(json: string): BreakupEntry[] {
   try {
     const parsed = JSON.parse(json);
     return Array.isArray(parsed) ? parsed : [];
@@ -61,12 +63,35 @@ function safeParseEntries(json: string): { label: string; amount: number }[] {
   }
 }
 
+/**
+ * Normalise whatever a client sent into storable lines. `full` is only ever
+ * written as a real boolean so the "flag absent = legacy row" fallback in
+ * reimbursementMath stays meaningful — an entry that has been through here
+ * has decided, one way or the other.
+ */
+function normaliseEntries(raw: unknown): BreakupEntry[] {
+  return (Array.isArray(raw) ? raw : [])
+    .map((e: { label?: unknown; amount?: unknown; full?: unknown }) => ({
+      label: typeof e.label === "string" ? e.label.slice(0, 200) : "",
+      amount: Number.isFinite(e.amount) ? Math.max(0, Math.round(e.amount as number)) : 0,
+      full: e.full === true,
+    }))
+    .filter((e) => e.label !== "" || e.amount > 0);
+}
+
 interface BreakupBody {
   employee_id?: number;
   period?: string;
-  entries?: { label?: string; amount?: number }[];
-  /** Admin-only: pay the FULL logged total instead of the standard 50%. */
+  entries?: { label?: string; amount?: number; full?: boolean }[];
+}
+
+/** Body of the 50%/100% rate PATCH. `entry_index` absent = every line. */
+interface RateBody {
+  employee_id?: number;
+  period?: string;
   full_reimbursement?: boolean;
+  entry_index?: number;
+  expected_amount?: number;
 }
 
 /**
@@ -79,7 +104,8 @@ app.get("/admin/reimbursement-breakup", async (c) => {
   if (!period || !PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   const rows = await c.env.DB.prepare(
-    "SELECT employee_id, period, entries, total, full_reimbursement, updated_at FROM reimbursement_breakups WHERE period = ?",
+    `SELECT employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at
+       FROM reimbursement_breakups WHERE period = ?`,
   )
     .bind(period)
     .all<{
@@ -87,6 +113,7 @@ app.get("/admin/reimbursement-breakup", async (c) => {
       period: string;
       entries: string;
       total: number;
+      reimbursed_total: number;
       full_reimbursement: number;
       updated_at: string;
     }>();
@@ -95,8 +122,14 @@ app.get("/admin/reimbursement-breakup", async (c) => {
     (rows.results ?? []).map((r) => ({
       employee_id: r.employee_id,
       period: r.period,
-      entries: safeParseEntries(r.entries),
+      // A legacy row's lines carry no flag of their own; surface them already
+      // resolved against the row's switch so no client has to know that rule.
+      entries: safeParseEntries(r.entries).map((e) => ({
+        ...e,
+        full: e.full ?? r.full_reimbursement === 1,
+      })),
       total: r.total,
+      reimbursed_total: r.reimbursed_total,
       full_reimbursement: r.full_reimbursement === 1,
       updated_at: r.updated_at,
     })),
@@ -105,11 +138,10 @@ app.get("/admin/reimbursement-breakup", async (c) => {
 
 /**
  * Save an employee's reimbursement breakup for a cycle — HR ONLY (founders can
- * view it but not edit the notepad lines themselves; see the PATCH below for
- * the one thing they CAN do). Stores the notepad lines + their total; payroll
- * then reimburses half that total, or the full total when `full_reimbursement`
- * is set (syncPayroll, run here so the figure updates at once). Amounts are in
- * paise.
+ * view it but not rewrite the notepad lines; see the PATCH below for what they
+ * CAN do). Stores the lines, the raw logged total, and the payout those lines
+ * come to at their individual 50%/100% rates. syncPayroll runs here so the
+ * figure updates at once. Amounts are in paise.
  */
 app.put("/admin/reimbursement-breakup", async (c) => {
   const editor = c.get("employee");
@@ -122,15 +154,8 @@ app.put("/admin/reimbursement-breakup", async (c) => {
   const period = typeof body.period === "string" ? body.period : "";
   if (!Number.isInteger(employeeId)) return c.json({ error: "employee_id is required" }, 400);
   if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
-  const fullReimbursement = body.full_reimbursement === true;
 
-  const entries = (Array.isArray(body.entries) ? body.entries : [])
-    .map((e) => ({
-      label: typeof e.label === "string" ? e.label.slice(0, 200) : "",
-      amount: Number.isFinite(e.amount) ? Math.max(0, Math.round(e.amount as number)) : 0,
-    }))
-    .filter((e) => e.label !== "" || e.amount > 0);
-  const total = entries.reduce((sum, e) => sum + e.amount, 0);
+  const entries = normaliseEntries(body.entries);
 
   if (entries.length === 0) {
     // Cleared to nothing → drop the breakup entirely so payroll stops applying
@@ -139,41 +164,69 @@ app.put("/admin/reimbursement-breakup", async (c) => {
     await c.env.DB.prepare("DELETE FROM reimbursement_breakups WHERE employee_id = ? AND period = ?")
       .bind(employeeId, period)
       .run();
-  } else {
-    await c.env.DB.prepare(
-      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, full_reimbursement, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
-       ON CONFLICT (employee_id, period)
-       DO UPDATE SET entries = excluded.entries, total = excluded.total,
-                     full_reimbursement = excluded.full_reimbursement,
-                     updated_at = datetime('now'), updated_by = excluded.updated_by`,
-    )
-      .bind(employeeId, period, JSON.stringify(entries), total, fullReimbursement ? 1 : 0, editor.id)
-      .run();
+    await syncPayroll(c.env.DB, period);
+    return c.json({ employee_id: employeeId, period, entries, total: 0, reimbursed_total: 0, full_reimbursement: false });
   }
 
-  // Net pay reimburses half this total (or all of it, when full_reimbursement
-  // is set) — recompute so the Payroll tab reflects it immediately. No-op on a
-  // cycle already marked paid (those stay frozen).
+  const saved = await writeBreakup(c.env.DB, employeeId, period, entries, editor.id);
+
+  // Recompute so the Payroll tab reflects it immediately. No-op on a cycle
+  // already marked paid (those stay frozen).
   await syncPayroll(c.env.DB, period);
 
-  return c.json({ employee_id: employeeId, period, entries, total, full_reimbursement: fullReimbursement });
+  return c.json({ employee_id: employeeId, period, ...saved });
 });
 
 /**
- * Flip a cycle's reimbursement between the standard 50% and the full logged
- * total — the one edit ANY admin can make here, HR or founder. Unlike the PUT
- * above it never touches the notepad lines or creates a breakup; there must
- * already be one (404s otherwise), and only `full_reimbursement` changes.
- * That's a narrower, safer permission than rewriting the entries themselves,
- * which stays HR-only, so this gets its own route rather than loosening the
- * PUT's tier check.
+ * Persist a breakup's lines together with the two figures derived from them,
+ * so every write path agrees on what "the payout" and "all at 100%" mean.
+ */
+async function writeBreakup(
+  db: D1Database,
+  employeeId: number,
+  period: string,
+  entries: BreakupEntry[],
+  editorId: number,
+) {
+  const total = loggedTotal(entries);
+  const reimbursed = reimbursedTotal(entries);
+  const everyLineFull = allFull(entries);
+
+  await db
+    .prepare(
+      `INSERT INTO reimbursement_breakups
+         (employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+       ON CONFLICT (employee_id, period)
+       DO UPDATE SET entries = excluded.entries, total = excluded.total,
+                     reimbursed_total = excluded.reimbursed_total,
+                     full_reimbursement = excluded.full_reimbursement,
+                     updated_at = datetime('now'), updated_by = excluded.updated_by`,
+    )
+    .bind(employeeId, period, JSON.stringify(entries), total, reimbursed, everyLineFull ? 1 : 0, editorId)
+    .run();
+
+  return { entries, total, reimbursed_total: reimbursed, full_reimbursement: everyLineFull };
+}
+
+/**
+ * Set the 50%/100% rate on a breakup — ONE line of it with `entry_index`, or
+ * every line without. This is the edit ANY admin can make, HR or founder:
+ * unlike the PUT it never adds, removes or re-labels a line and never creates
+ * a breakup (404s if there isn't one), it only moves money between half and
+ * full on lines HR already logged. That's narrow enough to hand to a founder
+ * reviewing dues, so it gets its own route rather than loosening the PUT.
+ *
+ * `expected_amount` guards the indexed form: the client is working from a list
+ * it fetched, and if HR has since inserted or removed a line, that index now
+ * points at a different date. Rather than silently pay out the wrong day, a
+ * mismatch is refused and the caller reloads.
  */
 app.patch("/admin/reimbursement-breakup/full", async (c) => {
   const editor = c.get("employee");
   const body = await c.req
-    .json<{ employee_id?: number; period?: string; full_reimbursement?: boolean }>()
-    .catch(() => ({}) as { employee_id?: number; period?: string; full_reimbursement?: boolean });
+    .json<RateBody>()
+    .catch(() => ({}) as RateBody);
 
   const employeeId = Number(body.employee_id);
   const period = typeof body.period === "string" ? body.period : "";
@@ -181,23 +234,47 @@ app.patch("/admin/reimbursement-breakup/full", async (c) => {
   if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
   const fullReimbursement = body.full_reimbursement === true;
 
-  const result = await c.env.DB.prepare(
-    `UPDATE reimbursement_breakups
-        SET full_reimbursement = ?, updated_at = datetime('now'), updated_by = ?
-      WHERE employee_id = ? AND period = ?`,
+  const existing = await c.env.DB.prepare(
+    "SELECT entries, full_reimbursement FROM reimbursement_breakups WHERE employee_id = ? AND period = ?",
   )
-    .bind(fullReimbursement ? 1 : 0, editor.id, employeeId, period)
-    .run();
+    .bind(employeeId, period)
+    .first<{ entries: string; full_reimbursement: number }>();
 
-  if (!result.meta.changes) {
+  if (!existing) {
     return c.json({ error: "No reimbursement breakup logged for this employee this cycle" }, 404);
   }
+
+  // Resolve legacy flagless lines against the row's switch before touching one,
+  // so flipping a single date doesn't silently reset the others to 50%.
+  const wasFull = existing.full_reimbursement === 1;
+  const entries: BreakupEntry[] = safeParseEntries(existing.entries).map((e) => ({
+    ...e,
+    full: e.full ?? wasFull,
+  }));
+
+  const index = body.entry_index;
+  if (index !== undefined) {
+    if (!Number.isInteger(index) || index < 0 || index >= entries.length) {
+      return c.json({ error: "entry_index is out of range for this breakup" }, 400);
+    }
+    if (Number.isFinite(body.expected_amount) && entries[index].amount !== body.expected_amount) {
+      return c.json(
+        { error: "This breakup changed while you were looking at it — reload and try again" },
+        409,
+      );
+    }
+    entries[index] = { ...entries[index], full: fullReimbursement };
+  } else {
+    for (let i = 0; i < entries.length; i++) entries[i] = { ...entries[i], full: fullReimbursement };
+  }
+
+  const saved = await writeBreakup(c.env.DB, employeeId, period, entries, editor.id);
 
   // Recompute so the Payroll tab reflects it immediately. No-op on a cycle
   // already marked paid (those stay frozen).
   await syncPayroll(c.env.DB, period);
 
-  return c.json({ employee_id: employeeId, period, full_reimbursement: fullReimbursement });
+  return c.json({ employee_id: employeeId, period, ...saved });
 });
 
 /**
