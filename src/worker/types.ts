@@ -222,12 +222,15 @@ export interface AdminPayrollRow extends PayrollWithName {
   wfh_days: number;
   /**
    * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
-   * above already reflects HALF of this total when a breakup exists; the raw
-   * total and entries are here so the Payroll tab can show the full breakdown
-   * in a dropdown. Null when HR hasn't entered one (approved requests stand).
+   * above already reflects HALF of this total, or ALL of it when an admin has
+   * flipped `reimbursement_breakup_full` on; the raw total and entries are
+   * here so the Payroll tab can show the full breakdown in a dropdown. Null
+   * when HR hasn't entered one (approved requests stand).
    */
   reimbursement_breakup_total: number | null;
   reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
+  /** 1 when this breakup pays out in full instead of the standard 50%. */
+  reimbursement_breakup_full: number | null;
 }
 
 /** One labelled line in HR's daily reimbursement notepad; amount in paise. */
@@ -242,6 +245,8 @@ export interface ReimbursementBreakup {
   period: string;
   entries: BreakupEntry[];
   total: number;
+  /** Admin-only: pays out the FULL total instead of the standard 50%. */
+  full_reimbursement: boolean;
   updated_at: string;
 }
 
