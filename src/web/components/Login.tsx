@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { setSession } from "../session";
+import { saveToken, setSession } from "../session";
 import type { Employee, EmployeeRole } from "../types";
 import { Button } from "./ui/Button";
 import { ThemeToggle } from "./ThemeToggle";
@@ -47,10 +47,12 @@ export function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
     setError(null);
     setLoading(true);
     try {
-      const data = await api.post<{ role: EmployeeRole; employee: Employee }>("/auth/verify-otp", {
+      const data = await api.post<{ token: string; role: EmployeeRole; employee: Employee }>("/auth/verify-otp", {
         email,
         code: value,
       });
+      // Persist only the opaque token; keep the identity in memory for rendering.
+      saveToken(data.token);
       setSession({ role: data.role, employeeId: data.employee.id, tier: data.employee.tier });
       onLoggedIn();
     } catch (err) {

@@ -40,15 +40,15 @@ Chromium browser** — only the extensions-page URL differs:
 
 ## How it works
 
-The HR tool identifies users with `x-user-id` / `x-role` headers. The extension:
+The HR tool identifies the caller by an opaque, server-issued session token
+sent as an `Authorization: Bearer` header. The extension:
 
 1. **Connect once (email OTP)** — you enter your work email; the backend emails
    you a 6-digit code via the Muns email API (`POST /api/auth/request-otp`). You
    enter the code (`POST /api/auth/verify-otp`), which proves you own the
-   address and returns your employee id + role, stored locally in
-   `chrome.storage`.
+   address and returns a session token, stored locally in `chrome.storage`.
 2. **Punch anytime** — a keyboard shortcut (or the popup buttons) sends a
-   `POST` to the clock-in / clock-out endpoint with those headers. You get a
+   `POST` to the clock-in / clock-out endpoint with that token. You get a
    desktop notification with the result.
 
 The Worker URL (`https://hr-tool.tech-441.workers.dev`) is baked in, so there's
@@ -110,12 +110,12 @@ both handle updates natively. Ask if you want either set up.
 ## Security note
 
 Connecting now requires an email OTP, so a device can only act as an employee
-who can read that employee's inbox. After verification the extension uses the
-same header-based identity (`x-user-id`) as the website for the actual
-clock-in / clock-out calls. If you later want fully device-bound auth
-(`Authorization: Bearer <device-token>`), that's a further backend change: issue
-a signed device token on verify and accept it on `/api/attendance/*`, then swap
-the header for that token in `background.js` — only `background.js` changes.
+who can read that employee's inbox. After verification the extension stores the
+server-issued session token and sends it as `Authorization: Bearer <token>` on
+the clock-in / clock-out calls — the same server-verified identity the website
+uses. The token is opaque: it carries no employee id or role the device could
+edit, and the server resolves who it belongs to on every request. It's a normal
+account session (30-day expiry); when it lapses, reconnect via the popup.
 
 ## Icons
 

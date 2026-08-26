@@ -7,6 +7,12 @@ import {
   revokeAdminSession,
   setAdminSessionCookie,
 } from "../adminSession";
+import {
+  bearerToken,
+  createEmployeeSession,
+  getEmployeeSessionEmployee,
+  revokeEmployeeSession,
+} from "../employeeSession";
 import { sendRawEmail } from "../email";
 import { hashPassword, passwordStrengthError, verifyPassword } from "../password";
 import type { Employee } from "../types";
@@ -22,6 +28,19 @@ function publicEmployee(employee: Employee) {
     role: employee.role,
     tier: employee.tier,
   };
+}
+
+/**
+ * The credential every logged-in path hands back: an opaque, server-issued
+ * session token the client stores and replays as `Authorization: Bearer`. The
+ * server resolves the real identity from this token on every request, so the
+ * client never again gets to assert who it is (see ../auth.ts). `employee` is
+ * still returned so the UI can render the right screen without a second round
+ * trip — but nothing the server trusts comes from it.
+ */
+async function issueSession(db: D1Database, employee: Employee, role: string, extra: Record<string, unknown> = {}) {
+  const token = await createEmployeeSession(db, employee.id);
+  return { token, role, employee, ...extra };
 }
 
 const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -42,13 +61,13 @@ app.post("/login", async (c) => {
     ).first<Employee>();
     if (!admin) return c.json({ error: "No admin account seeded" }, 500);
     const employees = await c.env.DB.prepare("SELECT * FROM employees ORDER BY id").all<Employee>();
-    return c.json({ role: "admin", employee: admin, employees: employees.results });
+    return c.json(await issueSession(c.env.DB, admin, "admin", { employees: employees.results }));
   }
 
   if (text === "hr") {
     const hr = await c.env.DB.prepare("SELECT * FROM employees WHERE tier = 'hr' ORDER BY id LIMIT 1").first<Employee>();
     if (!hr) return c.json({ error: "No HR account yet — ask a founder to assign one" }, 500);
-    return c.json({ role: "admin", employee: hr });
+    return c.json(await issueSession(c.env.DB, hr, "admin"));
   }
 
   if (text === "employee") {
@@ -56,7 +75,7 @@ app.post("/login", async (c) => {
       "SELECT * FROM employees WHERE role = 'employee' ORDER BY id LIMIT 1"
     ).first<Employee>();
     if (!employee) return c.json({ error: "No employee account seeded" }, 500);
-    return c.json({ role: "employee", employee });
+    return c.json(await issueSession(c.env.DB, employee, "employee"));
   }
 
   if (text.includes("@")) {
@@ -64,7 +83,7 @@ app.post("/login", async (c) => {
       .bind(text)
       .first<Employee>();
     if (!employee) return c.json({ error: "No account with that email" }, 404);
-    return c.json({ role: employee.role, employee });
+    return c.json(await issueSession(c.env.DB, employee, employee.role));
   }
 
   return c.json({ error: "Type 'admin', 'hr', 'employee', or your email to continue" }, 400);
@@ -112,8 +131,9 @@ app.post("/auth/request-otp", async (c) => {
 });
 
 /**
- * Step 2: verify the code and return the same session payload as /login so the
- * device can start sending x-user-id / x-role on its requests.
+ * Step 2: verify the code and return the same session payload as /login —
+ * including the bearer token the device then sends as `Authorization` on its
+ * requests.
  */
 app.post("/auth/verify-otp", async (c) => {
   const body = await c.req
@@ -144,7 +164,28 @@ app.post("/auth/verify-otp", async (c) => {
     return c.json({ error: "No account with that email" }, 404);
   }
 
-  return c.json({ role: employee.role, employee });
+  return c.json(await issueSession(c.env.DB, employee, employee.role));
+});
+
+/**
+ * "Whoami" for the base session token — lets the SPA turn the opaque token it
+ * has in storage back into "who am I / what can I see" on a cold load, without
+ * the client keeping (and therefore exposing/being able to edit) its own id and
+ * role. Always 200: "not authenticated" is a normal state here, not an error,
+ * so it doesn't trip the app's 401 → force-logout handling during boot.
+ */
+app.get("/auth/session", async (c) => {
+  const token = bearerToken(c.req.header("authorization"));
+  const employee = await getEmployeeSessionEmployee(c.env.DB, token);
+  return c.json(
+    employee ? { authenticated: true, role: employee.role, employee: publicEmployee(employee) } : { authenticated: false }
+  );
+});
+
+/** Revoke the caller's base session token (explicit sign-out). */
+app.post("/auth/logout", async (c) => {
+  await revokeEmployeeSession(c.env.DB, bearerToken(c.req.header("authorization")));
+  return c.json({ ok: true });
 });
 
 /**

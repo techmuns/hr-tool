@@ -26,7 +26,6 @@ app.get("/admin/chat", requireAdmin, async (c) => {
 
 app.post("/chat", async (c) => {
   const employee = c.get("employee");
-  const role = c.req.header("x-role");
   const body = await c
     .req.json<{ body?: string; employee_id?: number }>()
     .catch(() => ({}) as { body?: string; employee_id?: number });
@@ -37,7 +36,11 @@ app.post("/chat", async (c) => {
   let threadEmployeeId = employee.id;
   let senderRole: "employee" | "admin" = "employee";
 
-  if (role === "admin" && employee.role === "admin") {
+  // `employee.role` is the verified, token-resolved role. This used to also
+  // require an `x-role: admin` header, but that header was set by the client
+  // from its own session — never an independent check — so for any real client
+  // it was always equal to this role anyway.
+  if (employee.role === "admin") {
     if (!body.employee_id) return c.json({ error: "employee_id is required for admin replies" }, 400);
     threadEmployeeId = body.employee_id;
     senderRole = "admin";

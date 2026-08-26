@@ -1,5 +1,6 @@
 import type { Context, Next } from "hono";
 import type { Employee } from "./types";
+import { bearerToken, getEmployeeSessionEmployee } from "./employeeSession";
 
 export type Bindings = {
   DB: D1Database;
@@ -22,17 +23,21 @@ export type Variables = {
 export type AppEnv = { Bindings: Bindings; Variables: Variables };
 
 /**
- * Demo-grade identity: trusts x-user-id / x-role headers set by the client
- * from its logged-in session. No passwords, per product requirements.
+ * Establishes the caller's identity from a server-issued session token.
+ *
+ * The identity is whichever employee the token was ISSUED for — resolved by
+ * looking the token up server-side (see ./employeeSession.ts) — never anything
+ * the client asserts about itself. That's the whole point: the old scheme read
+ * the caller's id straight from an `x-user-id` header the client set from a
+ * plaintext localStorage object, so editing that number (or sending any header)
+ * impersonated anyone. A bearer token can't be forged into another employee's
+ * identity: change a character and it stops matching a stored session, full
+ * stop. `role`/`tier` likewise come from the fresh DB row, so the client can
+ * never assert its own privileges.
  */
 export async function requireEmployee(c: Context<AppEnv>, next: Next) {
-  const userId = c.req.header("x-user-id");
-  if (!userId || Number.isNaN(Number(userId))) {
-    return c.json({ error: "Not authenticated" }, 401);
-  }
-  const employee = await c.env.DB.prepare("SELECT * FROM employees WHERE id = ?")
-    .bind(Number(userId))
-    .first<Employee>();
+  const token = bearerToken(c.req.header("authorization"));
+  const employee = await getEmployeeSessionEmployee(c.env.DB, token);
   if (!employee) {
     return c.json({ error: "Not authenticated" }, 401);
   }
@@ -41,9 +46,12 @@ export async function requireEmployee(c: Context<AppEnv>, next: Next) {
 }
 
 export async function requireAdmin(c: Context<AppEnv>, next: Next) {
+  // `employee` is already the verified, token-resolved identity from
+  // requireEmployee, so its `role` is authoritative — there is no separate
+  // client-supplied role header to second-guess (there used to be an `x-role`
+  // check here, but a header the client sets is not a second factor).
   const employee = c.get("employee");
-  const headerRole = c.req.header("x-role");
-  if (!employee || employee.role !== "admin" || headerRole !== "admin") {
+  if (!employee || employee.role !== "admin") {
     return c.json({ error: "Admin access required" }, 403);
   }
   await next();
