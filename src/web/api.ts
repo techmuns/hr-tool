@@ -1,6 +1,6 @@
-import { clearSession, getSession } from "./session";
+import { clearSession, getSession, getToken, setSession, type Session } from "./session";
 import { currentMonth } from "./date";
-import type { Attendance, Employee, LeaveRequest, Reimbursement } from "./types";
+import type { Attendance, Employee, EmployeeRole, LeaveRequest, Reimbursement } from "./types";
 
 /** Fired whenever a request comes back 401 so the app can drop the stale
  *  session and send the person back through the OTP login flow, instead of
@@ -8,15 +8,16 @@ import type { Attendance, Employee, LeaveRequest, Reimbursement } from "./types"
 export const SESSION_EXPIRED_EVENT = "hr:session-expired";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const session = getSession();
+  const token = getToken();
   const headers = new Headers(options.headers);
   // FormData supplies its own multipart Content-Type, including the boundary —
   // overriding it here would make the body unparseable on the other end.
   if (!(options.body instanceof FormData)) headers.set("Content-Type", "application/json");
-  if (session) {
-    headers.set("x-user-id", String(session.employeeId));
-    headers.set("x-role", session.role);
-  }
+  // The only thing that identifies the caller is this opaque, server-issued
+  // token. There is no client-supplied user id or role any more — the server
+  // resolves who this is (and what they can do) from the token alone, so it
+  // can't be edited into someone else's identity.
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
   // The dashboard runs in a third-party (Munshot) iframe, so requests to its
   // own origin still count as cross-site to the browser's cookie policy —
@@ -27,10 +28,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     const errorMessage = data && typeof data === "object" && "error" in data ? (data as { error?: string }).error : undefined;
     const error = new Error(errorMessage || `Request failed (${res.status})`) as Error & { code?: string };
     if (data && typeof data === "object" && "code" in data) error.code = (data as { code?: string }).code;
-    if (res.status === 401 && session) {
-      // The local session no longer matches a real employee (deleted, or a
-      // stale localStorage entry from another deploy) — drop it and tell the
-      // app to fall back to login rather than repeatedly hitting this branch.
+    if (res.status === 401 && token) {
+      // The token no longer resolves to a real session (expired, revoked, or
+      // stale from another deploy) — drop it and tell the app to fall back to
+      // login rather than repeatedly hitting this branch.
       clearSession();
       clearApiCache();
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
@@ -38,6 +39,47 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw error;
   }
   return data as T;
+}
+
+interface SessionResponse {
+  authenticated: boolean;
+  role?: EmployeeRole;
+  employee?: Employee;
+}
+
+/**
+ * Turn the opaque token in storage back into the caller's identity for the UI.
+ * Called once on a cold load: the client no longer keeps its own id/role/tier
+ * around (that's what used to be editable), so it asks the server who this
+ * token belongs to. Returns null when there's no token or it no longer resolves
+ * to a live session — in which case the app falls back to login.
+ */
+export async function resolveIdentity(): Promise<Session | null> {
+  if (!getToken()) return null;
+  try {
+    const data = await request<SessionResponse>("/auth/session");
+    if (!data.authenticated || !data.employee || !data.role) {
+      clearSession();
+      return null;
+    }
+    const session: Session = { role: data.role, employeeId: data.employee.id, tier: data.employee.tier };
+    setSession(session);
+    return session;
+  } catch {
+    // Network error etc. — treat as unauthenticated rather than crashing boot.
+    return null;
+  }
+}
+
+/** Explicit sign-out: revoke the token server-side (best effort), then drop it locally. */
+export async function logout(): Promise<void> {
+  try {
+    await request("/auth/logout", { method: "POST" });
+  } catch {
+    /* even if the revoke call fails, still clear locally below */
+  }
+  clearSession();
+  clearApiCache();
 }
 
 // --- Lightweight GET cache ---------------------------------------------------
@@ -113,12 +155,9 @@ async function mutate<T>(path: string, method: string, body?: unknown): Promise<
  * links — fetch the bytes here and let the caller hand the blob to the browser.
  */
 export async function fetchBill(reimbursementId: number): Promise<Blob> {
-  const session = getSession();
+  const token = getToken();
   const headers = new Headers();
-  if (session) {
-    headers.set("x-user-id", String(session.employeeId));
-    headers.set("x-role", session.role);
-  }
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(`/api/reimbursements/${reimbursementId}/bill`, { headers, credentials: "include" });
   if (!res.ok) {
     const data: unknown = await res.json().catch(() => null);

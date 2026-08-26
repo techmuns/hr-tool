@@ -1,4 +1,5 @@
 import type { Employee, EmployeeRole, Tier } from "../src/worker/types";
+import { createEmployeeSession } from "../src/worker/employeeSession";
 
 export async function seedEmployee(
   db: D1Database,
@@ -24,9 +25,14 @@ export async function seedEmployee(
   return employee;
 }
 
-/** Headers a legitimate client sends for the regular (base) employee session. */
-export function employeeHeaders(employee: Pick<Employee, "id" | "role">): HeadersInit {
-  return { "x-user-id": String(employee.id), "x-role": employee.role };
+/**
+ * Headers a legitimate client sends for the regular (base) employee session:
+ * a real, server-issued bearer token. There is no longer any client-declared
+ * id/role header — identity is only ever the token.
+ */
+export async function employeeAuthHeaders(db: D1Database, employee: Pick<Employee, "id">): Promise<HeadersInit> {
+  const token = await createEmployeeSession(db, employee.id);
+  return { Authorization: `Bearer ${token}` };
 }
 
 /** Pulls the value of one cookie out of a Response's Set-Cookie header(s). */

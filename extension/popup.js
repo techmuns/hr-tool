@@ -34,8 +34,8 @@ async function post(path, body) {
 }
 
 async function load() {
-  const cfg = await chrome.storage.local.get(["employeeId", "name"]);
-  showStep(cfg.employeeId ? "connected" : "email", cfg.name);
+  const cfg = await chrome.storage.local.get(["token", "name"]);
+  showStep(cfg.token ? "connected" : "email", cfg.name);
 }
 
 async function sendCode() {
@@ -66,16 +66,20 @@ async function verify() {
   setStatus("Verifying…");
   try {
     const { res, data } = await post("/api/auth/verify-otp", { email: pendingEmail, code });
-    if (!res.ok || !data || !data.employee) {
+    if (!res.ok || !data || !data.employee || !data.token) {
       return setStatus((data && data.error) || "Verification failed.", "err");
     }
     const emp = data.employee;
+    // Store only the opaque session token (and a display name) — never the id or
+    // role. The server resolves who we are from the token on every request, so
+    // there's nothing here to edit into someone else's identity.
     await chrome.storage.local.set({
       baseUrl: BASE_URL,
-      employeeId: emp.id,
-      role: data.role || emp.role || "employee",
+      token: data.token,
       name: emp.name || pendingEmail,
     });
+    // Clear any id/role left by an older build that stored them.
+    await chrome.storage.local.remove(["employeeId", "role"]);
     showStep("connected", emp.name || pendingEmail);
     setStatus("Connected. Try the shortcut!", "ok");
   } catch (err) {
@@ -94,7 +98,7 @@ function punch(action) {
 }
 
 async function disconnect() {
-  await chrome.storage.local.remove(["employeeId", "role", "name"]);
+  await chrome.storage.local.remove(["token", "employeeId", "role", "name"]);
   pendingEmail = "";
   showStep("email");
   setStatus("Disconnected.");

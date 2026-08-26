@@ -161,7 +161,9 @@ app.get("/reimbursements/:id/bill", async (c) => {
   if (!row || !row.bill_key) return c.json({ error: "Bill not found" }, 404);
 
   const viewer = c.get("employee");
-  const isAdmin = viewer.role === "admin" && c.req.header("x-role") === "admin";
+  // viewer is the verified, token-resolved identity, so its role is
+  // authoritative — no need to corroborate it against a client-set x-role header.
+  const isAdmin = viewer.role === "admin";
   if (!isAdmin && row.employee_id !== viewer.id) return c.json({ error: "Not allowed" }, 403);
 
   if (!c.env.BILLS) return c.json({ error: "Bill uploads are temporarily unavailable" }, 503);

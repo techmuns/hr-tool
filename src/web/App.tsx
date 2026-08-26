@@ -3,8 +3,8 @@ import { Login } from "./components/Login";
 import { EmployeeDashboard } from "./employee/EmployeeDashboard";
 import { ClockPage } from "./employee/ClockPage";
 import { AdminDashboard } from "./admin/AdminDashboard";
-import { clearSession, getSession, setSession } from "./session";
-import { api, clearApiCache, SESSION_EXPIRED_EVENT } from "./api";
+import { clearSession, getSession, getToken, saveToken, setSession } from "./session";
+import { api, clearApiCache, resolveIdentity, SESSION_EXPIRED_EVENT } from "./api";
 import { useHostContext } from "./hooks/useHostContext";
 import type { SessionContext } from "./lib/sdk";
 import type { Employee, EmployeeRole, Tier } from "./types";
@@ -63,6 +63,30 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
   const [hostError, setHostError] = useState<string | null>(null);
   const resolvedEmail = useRef<string | null>(null);
 
+  // Standalone cold load: identity is never persisted (only the opaque token
+  // is), so on a fresh page we hold a token but no in-memory identity yet. Ask
+  // the server who the token belongs to before rendering. Skipped entirely when
+  // the host is providing identity — the host-identity effect below owns that.
+  const bootFromToken = !host.email && !host.token;
+  const [booting, setBooting] = useState<boolean>(() => bootFromToken && !getSession() && !!getToken());
+
+  useEffect(() => {
+    if (!bootFromToken || getSession() || !getToken()) {
+      setBooting(false);
+      return;
+    }
+    let cancelled = false;
+    setBooting(true);
+    resolveIdentity().then((id) => {
+      if (cancelled) return;
+      setSessionState(id);
+      setBooting(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [bootFromToken]);
+
   function refresh() {
     setSessionState(getSession());
   }
@@ -97,9 +121,11 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
     setHostStatus("resolving");
     setHostError(null);
     api
-      .post<{ role: EmployeeRole; employee: Employee }>("/login", { text: email })
+      .post<{ token: string; role: EmployeeRole; employee: Employee }>("/login", { text: email })
       .then((data) => {
         clearApiCache();
+        // Persist only the opaque token; identity stays in memory for the UI.
+        saveToken(data.token);
         setSession({ role: data.role, employeeId: data.employee.id, tier: data.employee.tier });
         setSessionState(getSession());
         setHostStatus("done");
@@ -118,6 +144,10 @@ const HrApp = memo(function HrApp({ host }: { host: SessionContext }) {
 
   // While the host identity is being resolved, don't render the previous user.
   if (host.email && hostStatus === "resolving") {
+    return <Centered>Signing you in…</Centered>;
+  }
+  // Standalone: resolving the stored token into an identity on a cold load.
+  if (bootFromToken && booting) {
     return <Centered>Signing you in…</Centered>;
   }
   if (host.email && hostStatus === "error") {

@@ -6,18 +6,29 @@ binding.
 
 ## Login
 
-Single text box on `/`. Typing `admin` signs in as HR; typing `employee` signs in
-as a sample employee. Base identity is a demo-grade `x-user-id` / `x-role`
-header pair stored in `localStorage` — fine for telling employees apart, but
-not sufficient on its own for HR/founder (`role = 'admin'`) capability.
+Standalone, sign-in is by email one-time code (`/` → email → 6-digit code).
+
+**Base identity is a server-issued session token.** A successful login (OTP
+verify, or the host relay below) returns an opaque, random token; the server
+stores only its SHA-256 (`employee_sessions` table) and hands the raw token to
+the client, which keeps it in `localStorage` and replays it as
+`Authorization: Bearer <token>` on every request. The server resolves the real
+employee — id, role, and tier — by looking that token up on each request
+(`requireEmployee` in `src/worker/auth.ts`), so the client never asserts its
+own identity. This replaced an earlier scheme where the client sent its own
+`x-user-id` / `x-role` headers from a plaintext `localStorage` object: editing
+that id (or sending any header) got you served as another employee. A token
+can't be forged into someone else's identity — change a character and it simply
+stops matching a stored session. `localStorage` now holds only the opaque token
+(nothing readable, nothing tamperable); the id/role/tier the UI needs are
+resolved from the server via `GET /api/auth/session` on load. See
+`src/worker/employeeSession.ts`.
 
 **Admin/HR access additionally requires a password.** A `role = 'admin'`
 employee's base session unlocks nothing privileged by itself; they must also
 authenticate with a password via `POST /api/auth/admin-login`, which issues a
-short-lived (6h), HttpOnly, server-tracked session cookie. Every `/admin/*`
-and other privileged endpoint checks that cookie — never the `x-user-id`/
-`x-role` headers, which are plain client-supplied values. First-time setup:
-a privileged employee sets their own password via `POST
+short-lived (6h), HttpOnly, server-tracked session cookie (`admin_sessions`).
+First-time setup: a privileged employee sets their own password via `POST
 /api/auth/admin-password/set`, gated on their base (OTP/host) session so it
 can only ever touch their own account. See `src/worker/adminSession.ts` and
 `src/worker/routes/auth.ts` for the implementation.
@@ -29,10 +40,12 @@ already, so this only matters for local dev.
 
 ### Embedding (Munshot iframe)
 
-When loaded inside the Munshot host's iframe, the base identity (including the
-session JWT) comes from a `postMessage` the host sends rather than the OTP
-form (see `src/web/lib/sdk.ts`, `src/web/hooks/useHostContext.ts`). Only
-messages from an allow-listed origin are trusted — set
+When loaded inside the Munshot host's iframe, the user's identity comes from a
+`postMessage` the host sends rather than the OTP form: the host provides the
+signed-in user's email, and the app exchanges it (`POST /api/login`) for a base
+session token, same as above (see `src/web/lib/sdk.ts`,
+`src/web/hooks/useHostContext.ts`, `src/web/App.tsx`). Only messages from an
+allow-listed origin are trusted — set
 `VITE_MUNSHOT_ALLOWED_ORIGINS` (comma-separated, see `.env.example`) at build
 time to override the real muns.io origin(s); left unset, it falls back to the
 `DEFAULT_ALLOWED_HOST_ORIGINS` hardcoded in `sdk.ts` (currently
