@@ -16,7 +16,7 @@ import {
   WORKING_DAYS_PER_MONTH,
 } from "../date";
 import { scrollToToday } from "../scrollToToday";
-import { confirmDialog } from "../confirm";
+import { confirmDialog, promptDialog } from "../confirm";
 import type { AttendanceStatus, AttendanceWithName, Employee, Holiday } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
 import { HolidaysSection } from "./Holidays";
@@ -208,7 +208,7 @@ export function AttendanceTable() {
   function openEditor(e: React.MouseEvent, employee: Employee, day: number, cell: DayCell | null) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const MENU_W = 190;
-    const MENU_H = 150;
+    const MENU_H = 210;
     const x = Math.min(rect.left, window.innerWidth - MENU_W - 12);
     const y = rect.bottom + 4 + MENU_H > window.innerHeight ? rect.top - MENU_H - 4 : rect.bottom + 4;
     setEditing({ employee, day, cell, x: Math.max(12, x), y: Math.max(12, y) });
@@ -310,6 +310,39 @@ export function AttendanceTable() {
     }
   }
 
+  /**
+   * The "Holiday" option in the same cell menu. A holiday is a company-wide
+   * date (the same list HR maintains by hand in the Holidays section below),
+   * so marking one from a cell marks that whole day for everyone — HR is
+   * asked for the name, and this person's record for the day is cleared so
+   * the cell shows the holiday instead. Anyone else who did clock in that day
+   * keeps their real status, exactly as before.
+   */
+  async function setHolidayForDay() {
+    if (!editing) return;
+    const dateStr = dayKey(month, editing.day);
+    const name = await promptDialog(
+      `Mark ${formatDate(dateStr)} as a holiday for everyone?` +
+        (editing.cell ? ` ${editing.employee.name}'s record for that day will be cleared.` : ""),
+      { placeholder: "e.g. Diwali", defaultValue: "Holiday", confirmLabel: "Mark holiday" },
+    );
+    if (!name) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post("/admin/holidays", { work_date: dateStr, name });
+      if (editing.cell) {
+        await api.del(`/admin/attendance/day/${editing.employee.id}/${dateStr}`);
+      }
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to mark holiday");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Card
       title="Attendance"
@@ -345,7 +378,8 @@ export function AttendanceTable() {
         </p>
       )}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Click a name to view or edit that employee. Click any cell to mark them present, not clocked in, or on leave.
+        Click a name to view or edit that employee. Click any cell to mark them present, not clocked in, on leave,
+        or to mark that date a holiday for everyone.
         The count under each name is present days out of {WORKING_DAYS_PER_MONTH} working days/month.
       </p>
 
@@ -581,6 +615,29 @@ export function AttendanceTable() {
                 </button>
               );
             })}
+            {(() => {
+              // Holiday sits with the rest of the options, but it's a
+              // company-wide date rather than one person's status — so it's
+              // marked here and removed (or renamed) in the Holidays list.
+              const holiday = holidayByDate.get(dayKey(month, editing.day));
+              return (
+                <button
+                  type="button"
+                  className={`hm-menu-item ${holiday ? "current" : ""}`}
+                  disabled={saving || Boolean(holiday)}
+                  title={
+                    holiday
+                      ? `Already a holiday — ${holiday.name}. Remove it in the Holidays list below.`
+                      : "Mark this date as a holiday for everyone"
+                  }
+                  onClick={setHolidayForDay}
+                >
+                  <span className="hm-swatch holiday" />
+                  Holiday
+                  {holiday && <span className="hm-menu-check">✓</span>}
+                </button>
+              );
+            })()}
           </div>
         </>
       )}

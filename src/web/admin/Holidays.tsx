@@ -58,8 +58,9 @@ export function HolidaysSection({ holidays, onChanged }: { holidays: Holiday[]; 
     <div style={{ marginTop: 24 }}>
       <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Holidays</h3>
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        National/festival holidays. Marked here, they show on the attendance grid for everyone and nobody
-        is emailed a clock-in reminder for them.
+        National/festival holidays. Marked here — or with the "Holiday" option on any cell in the grid
+        above — they show on the attendance grid for everyone and nobody is emailed a clock-in reminder
+        for them. Remove or rename one from this list.
       </p>
       {error && <p className="error-text">{error}</p>}
       <form onSubmit={addHoliday} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
