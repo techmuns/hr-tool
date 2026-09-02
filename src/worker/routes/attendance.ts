@@ -109,8 +109,15 @@ interface AdminAttendanceBody {
   clock_out?: string | null;
   /** 1 marks a present day as worked in-office; ignored unless status is present. */
   in_office?: boolean;
-  /** 1 marks a present day as work-from-home; mutually exclusive with in_office. */
+  /**
+   * 1 marks the day work-from-home. Usually paired with status "present"
+   * (mutually exclusive with in_office/half_day there); also allowed with
+   * status "absent" — HR marking someone WFH who never clocked in. Ignored
+   * for "leave".
+   */
   wfh?: boolean;
+  /** 1 marks a present day as half-day; ignored unless status is present. */
+  half_day?: boolean;
 }
 
 app.post("/admin/attendance", requireAdmin, async (c) => {
@@ -122,20 +129,37 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
     return c.json({ error: "employee_id and work_date are required" }, 400);
   }
   const status: AttendanceStatus = body.status ?? "present";
-  // in-office / WFH only mean anything for a present day, and are mutually
-  // exclusive (in-office wins if somehow both are set); a non-present day clears
-  // both so it never keeps counting as an office/WFH day.
+  // in-office / half-day only mean anything for a present day, and are
+  // mutually exclusive with each other and with wfh (in-office wins if
+  // somehow more than one is set); a non-present day clears both so neither
+  // keeps counting once the status moves on.
   const inOffice = status === "present" && body.in_office ? 1 : 0;
-  const wfh = status === "present" && body.wfh && !inOffice ? 1 : 0;
+  const halfDay = status === "present" && body.half_day && !inOffice ? 1 : 0;
+  // WFH is the one flag that also means something on an "absent" day — HR
+  // marking someone WFH who never clocked in. The cell still renders as
+  // "not clocked in" (see AttendanceTable/WorkingDays); only its second line
+  // and the payroll WFH count change. Never set on "leave".
+  const wfh =
+    body.wfh && ((status === "present" && !inOffice && !halfDay) || status === "absent") ? 1 : 0;
 
   await c.env.DB.prepare(
-    `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status, in_office, wfh)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status, in_office, wfh, half_day)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (employee_id, work_date)
      DO UPDATE SET clock_in = excluded.clock_in, clock_out = excluded.clock_out,
-                   status = excluded.status, in_office = excluded.in_office, wfh = excluded.wfh`
+                   status = excluded.status, in_office = excluded.in_office, wfh = excluded.wfh,
+                   half_day = excluded.half_day`
   )
-    .bind(body.employee_id, body.work_date, body.clock_in ?? null, body.clock_out ?? null, status, inOffice, wfh)
+    .bind(
+      body.employee_id,
+      body.work_date,
+      body.clock_in ?? null,
+      body.clock_out ?? null,
+      status,
+      inOffice,
+      wfh,
+      halfDay,
+    )
     .run();
 
   const row = await c.env.DB.prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")

@@ -13,6 +13,7 @@ import documentRoutes from "./routes/documents";
 import roleRoutes from "./routes/roles";
 import extensionRoutes from "./routes/extension";
 import appVersionRoutes from "./routes/appVersion";
+import holidayRoutes from "./routes/holidays";
 
 const app = new Hono<AppEnv>();
 
@@ -26,6 +27,7 @@ app.route("/api", extensionRoutes);
 app.route("/api", appVersionRoutes);
 app.route("/api", employeeRoutes);
 app.route("/api", attendanceRoutes);
+app.route("/api", holidayRoutes);
 app.route("/api", leaveRoutes);
 app.route("/api", feedbackRoutes);
 app.route("/api", chatRoutes);

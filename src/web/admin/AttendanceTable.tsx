@@ -6,17 +6,20 @@ import {
   currentMonth,
   dayKey,
   daysForMonth,
+  dayOfWeekLabel,
   formatDate,
   formatTime,
   isToday,
+  isWeekend,
   recentMonths,
   todayISODate,
   WORKING_DAYS_PER_MONTH,
 } from "../date";
 import { scrollToToday } from "../scrollToToday";
 import { confirmDialog } from "../confirm";
-import type { AttendanceStatus, AttendanceWithName, Employee } from "../types";
+import type { AttendanceStatus, AttendanceWithName, Employee, Holiday } from "../types";
 import { EmployeePanel } from "./EmployeePanel";
+import { HolidaysSection } from "./Holidays";
 
 type SortKey = "name" | "work_mode";
 
@@ -41,6 +44,9 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
  * The options in the cell editor. "In office" is a present day flagged
  * in_office — HR converts a normal (remote) present day into an in-office one,
  * which the payroll tab then totals. The plain "Present" clears the flag.
+ * "Not clocked in — WFH" is the one absent-status option: it keeps the cell
+ * looking exactly like a plain "not clocked in" day (see cellLabel/markCls
+ * below) but flags wfh=1, which the payroll WFH column then counts.
  */
 interface CellOption {
   key: string;
@@ -48,32 +54,49 @@ interface CellOption {
   status: AttendanceStatus;
   in_office: boolean;
   wfh: boolean;
-  /** Which swatch colour to show — reuses the status swatch classes. */
-  swatch: AttendanceStatus;
+  half_day: boolean;
+  /** Which swatch colour to show — reuses the status swatch classes, plus "half-day". */
+  swatch: AttendanceStatus | "half-day";
 }
-// In-office and WFH are both MANUAL marks HR applies to a present day; a plain
-// "Present" is neither. They're mutually exclusive.
+// In-office, WFH and half-day are all MANUAL marks HR applies to a present
+// day; a plain "Present" is none of them. They're mutually exclusive.
 const CELL_OPTIONS: CellOption[] = [
-  { key: "present", label: "Present", status: "present", in_office: false, wfh: false, swatch: "present" },
-  { key: "in_office", label: "In office", status: "present", in_office: true, wfh: false, swatch: "present" },
-  { key: "wfh", label: "Work from home", status: "present", in_office: false, wfh: true, swatch: "present" },
-  { key: "absent", label: "Not clocked in", status: "absent", in_office: false, wfh: false, swatch: "absent" },
-  { key: "leave", label: "Leave", status: "leave", in_office: false, wfh: false, swatch: "leave" },
+  { key: "present", label: "Present", status: "present", in_office: false, wfh: false, half_day: false, swatch: "present" },
+  { key: "in_office", label: "In office", status: "present", in_office: true, wfh: false, half_day: false, swatch: "present" },
+  { key: "wfh", label: "Work from home", status: "present", in_office: false, wfh: true, half_day: false, swatch: "present" },
+  { key: "half_day", label: "Half day", status: "present", in_office: false, wfh: false, half_day: true, swatch: "half-day" },
+  { key: "absent", label: "Not clocked in", status: "absent", in_office: false, wfh: false, half_day: false, swatch: "absent" },
+  { key: "absent_wfh", label: "Not clocked in — WFH", status: "absent", in_office: false, wfh: true, half_day: false, swatch: "absent" },
+  { key: "leave", label: "Leave", status: "leave", in_office: false, wfh: false, half_day: false, swatch: "leave" },
 ];
 
-/** The label a cell shows, distinguishing in-office / WFH present days. */
-function cellLabel(cell: { status: AttendanceStatus; in_office: boolean; wfh: boolean }): string {
+/**
+ * The label a cell shows. Deliberately does NOT distinguish absent+wfh from
+ * plain absent — both read "Not clocked in"; only the second line (see the
+ * render below) and the payroll WFH count differ. That's the whole point of
+ * the HR-marked-WFH-while-absent option: it must look like every other
+ * "not clocked in" cell.
+ */
+function cellLabel(cell: { status: AttendanceStatus; in_office: boolean; wfh: boolean; half_day: boolean }): string {
   if (cell.status === "present" && cell.in_office) return "In office";
+  if (cell.status === "present" && cell.half_day) return "Half day";
   if (cell.status === "present" && cell.wfh) return "WFH";
   return STATUS_LABEL[cell.status];
 }
 
-/** True when a cell matches an editor option (present splits on the flags). */
+/** True when a cell matches an editor option (present/absent split on their flags). */
 function isCurrentOption(cell: DayCell | null, opt: CellOption): boolean {
   if (!cell) return false;
   if (opt.status !== cell.status) return false;
-  if (opt.status !== "present") return true;
-  return Boolean(cell.in_office) === opt.in_office && Boolean(cell.wfh) === opt.wfh;
+  if (opt.status === "present") {
+    return (
+      Boolean(cell.in_office) === opt.in_office &&
+      Boolean(cell.wfh) === opt.wfh &&
+      Boolean(cell.half_day) === opt.half_day
+    );
+  }
+  if (opt.status === "absent") return Boolean(cell.wfh) === opt.wfh;
+  return true; // leave
 }
 
 interface DayCell {
@@ -82,6 +105,7 @@ interface DayCell {
   clock_out: string | null;
   in_office: boolean;
   wfh: boolean;
+  half_day: boolean;
 }
 
 interface Editing {
@@ -96,6 +120,7 @@ export function AttendanceTable() {
   const [month, setMonth] = useState(currentMonth());
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [attendance, setAttendance] = useState<AttendanceWithName[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("name");
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -116,14 +141,16 @@ export function AttendanceTable() {
     return Promise.all([
       api.get<Employee[]>("/employees"),
       api.get<AttendanceWithName[]>(`/admin/attendance?month=${month}`),
+      api.get<Holiday[]>("/holidays"),
     ])
-      .then(([emps, att]) => {
+      .then(([emps, att, hols]) => {
         // Tracked for attendance: employees + HR (who clock in), but not
         // founders (they don't clock in), freelancers, or anyone HR removed.
         setEmployees(
           emps.filter((e) => e.tier !== "founder" && e.employment_type !== "freelancer" && e.on_attendance !== 0),
         );
         setAttendance(att);
+        setHolidays(hols);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, [month]);
@@ -143,10 +170,14 @@ export function AttendanceTable() {
         clock_out: row.clock_out,
         in_office: Boolean(row.in_office),
         wfh: Boolean(row.wfh),
+        half_day: Boolean(row.half_day),
       });
     }
     return map;
   }, [attendance]);
+
+  // "YYYY-MM-DD" -> holiday, for the header + synthetic-cell lookups below.
+  const holidayByDate = useMemo(() => new Map(holidays.map((h) => [h.work_date, h])), [holidays]);
 
   // employee_id -> count of present days this month
   const presentCount = useMemo(() => {
@@ -254,7 +285,7 @@ export function AttendanceTable() {
     }
   }
 
-  async function setCell(status: AttendanceStatus, inOffice: boolean, wfh: boolean) {
+  async function setCell(status: AttendanceStatus, inOffice: boolean, wfh: boolean, halfDay: boolean) {
     if (!editing) return;
     setSaving(true);
     setError(null);
@@ -265,6 +296,7 @@ export function AttendanceTable() {
         status,
         in_office: inOffice,
         wfh,
+        half_day: halfDay,
         // preserve any recorded clock times through a status change
         clock_in: editing.cell?.clock_in ?? null,
         clock_out: editing.cell?.clock_out ?? null,
@@ -322,11 +354,22 @@ export function AttendanceTable() {
           <thead>
             <tr>
               <th className="hm-name">Employee</th>
-              {days.map((day) => (
-                <th key={day} className={isToday(month, day) ? "today-col" : undefined}>
-                  {day}
-                </th>
-              ))}
+              {days.map((day) => {
+                const holiday = holidayByDate.get(dayKey(month, day));
+                const cls = [
+                  isToday(month, day) ? "today-col" : "",
+                  isWeekend(month, day) ? "weekend-col" : "",
+                  holiday ? "holiday-col" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <th key={day} className={cls || undefined} title={holiday ? holiday.name : undefined}>
+                    <span className="hm-dow">{dayOfWeekLabel(month, day)}</span>
+                    <span className="hm-daynum">{day}</span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -358,17 +401,32 @@ export function AttendanceTable() {
                   {days.map((day) => {
                     const cell = dayMap?.get(dayKey(month, day)) ?? null;
                     const dateStr = dayKey(month, day);
+                    const holiday = holidayByDate.get(dateStr);
                     const started = dateStr <= todayISODate();
                     const onOrAfterJoin = dateStr >= emp.date_of_joining;
-                    const isSyntheticAbsent = !cell && started && onOrAfterJoin;
-                    const cls = cell?.status ?? (isSyntheticAbsent ? "absent" : "empty");
+                    // A holiday only overrides the empty/no-record look when
+                    // nobody actually has a real row that day — someone who
+                    // clocked in anyway still shows their real status.
+                    const isHoliday = !cell && Boolean(holiday);
+                    const isSyntheticAbsent = !cell && !holiday && started && onOrAfterJoin;
+                    const cls = cell?.status ?? (isSyntheticAbsent ? "absent" : isHoliday ? "holiday" : "empty");
                     const markCls =
-                      cell?.status === "present" ? (cell.in_office ? " in-office" : cell.wfh ? " wfh" : "") : "";
+                      cell?.status === "present"
+                        ? cell.in_office
+                          ? " in-office"
+                          : cell.half_day
+                            ? " half-day"
+                            : cell.wfh
+                              ? " wfh"
+                              : ""
+                        : "";
                     const title = cell
-                      ? `${emp.name} — ${dateStr}: ${cellLabel(cell)} (click to change)`
-                      : isSyntheticAbsent
-                        ? `${emp.name} — ${dateStr}: Not clocked in (click to set)`
-                        : `${emp.name} — ${dateStr}: no record (click to set)`;
+                      ? `${emp.name} — ${dateStr}: ${cellLabel(cell)}${cell.status === "absent" && cell.wfh ? " (WFH, HR-marked)" : ""} (click to change)`
+                      : isHoliday
+                        ? `${emp.name} — ${dateStr}: Holiday — ${holiday!.name} (click to set)`
+                        : isSyntheticAbsent
+                          ? `${emp.name} — ${dateStr}: Not clocked in (click to set)`
+                          : `${emp.name} — ${dateStr}: no record (click to set)`;
                     return (
                       <td key={day}>
                         <button
@@ -392,7 +450,9 @@ export function AttendanceTable() {
                                   </span>
                                 </span>
                               ) : (
-                                <span className="hm-times hm-noclock">no clock</span>
+                                <span className="hm-times hm-noclock">
+                                  {cell.status === "absent" && cell.wfh ? "wfh" : "no clock"}
+                                </span>
                               )}
                             </>
                           ) : isSyntheticAbsent ? (
@@ -400,6 +460,8 @@ export function AttendanceTable() {
                               <span className="hm-status-label">{STATUS_LABEL.absent}</span>
                               <span className="hm-times hm-noclock">no clock</span>
                             </>
+                          ) : isHoliday ? (
+                            <span className="hm-status-label hm-holiday-name">{holiday!.name}</span>
                           ) : (
                             <span className="hm-add">+</span>
                           )}
@@ -424,15 +486,23 @@ export function AttendanceTable() {
           <span className="hm-swatch present" /> Present
         </span>
         <span className="hm-legend-item">
+          <span className="hm-swatch half-day" /> Half day
+        </span>
+        <span className="hm-legend-item">
           <span className="hm-swatch absent" /> Not clocked in
         </span>
         <span className="hm-legend-item">
           <span className="hm-swatch leave" /> Leave
         </span>
         <span className="hm-legend-item">
+          <span className="hm-swatch holiday" /> Holiday
+        </span>
+        <span className="hm-legend-item">
           <span className="hm-swatch empty" /> No record
         </span>
       </div>
+
+      <HolidaysSection holidays={holidays} onChanged={load} />
 
       <div style={{ marginTop: 24 }}>
         <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Clock-in reminders</h3>
@@ -503,7 +573,7 @@ export function AttendanceTable() {
                   type="button"
                   className={`hm-menu-item ${current ? "current" : ""}`}
                   disabled={saving}
-                  onClick={() => setCell(opt.status, opt.in_office, opt.wfh)}
+                  onClick={() => setCell(opt.status, opt.in_office, opt.wfh, opt.half_day)}
                 >
                   <span className={`hm-swatch ${opt.swatch}`} />
                   {opt.label}

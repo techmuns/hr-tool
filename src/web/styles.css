@@ -17,9 +17,12 @@
   --present: #0ca30c;
   --absent: #d03b3b;
   --leave: #fab219;
+  --half-day: #8b5cf6;
+  --holiday: #0e9488;
   --present-soft: rgba(12, 163, 12, 0.14);
   --absent-soft: rgba(208, 59, 59, 0.14);
   --leave-soft: rgba(250, 178, 25, 0.18);
+  --holiday-soft: rgba(14, 148, 136, 0.14);
 
   --shadow: 0 1px 2px rgba(11, 11, 11, 0.06), 0 4px 12px rgba(11, 11, 11, 0.05);
   --radius: 10px;
@@ -41,6 +44,7 @@
   --present-soft: rgba(12, 163, 12, 0.2);
   --absent-soft: rgba(208, 59, 59, 0.2);
   --leave-soft: rgba(250, 178, 25, 0.22);
+  --holiday-soft: rgba(14, 148, 136, 0.22);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
@@ -59,6 +63,7 @@
     --present-soft: rgba(12, 163, 12, 0.2);
     --absent-soft: rgba(208, 59, 59, 0.2);
     --leave-soft: rgba(250, 178, 25, 0.22);
+    --holiday-soft: rgba(14, 148, 136, 0.22);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(0, 0, 0, 0.35);
   }
 }
@@ -599,6 +604,29 @@ tbody tr:last-child td {
   color: var(--primary);
 }
 
+.heatmap-grid thead th.weekend-col {
+  background: var(--surface-2);
+}
+
+.heatmap-grid thead th.holiday-col {
+  color: var(--holiday);
+}
+
+.hm-dow {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+
+.hm-daynum {
+  display: block;
+  font-size: 13px;
+  margin-top: 1px;
+}
+
 .hm-name {
   position: sticky;
   left: 0;
@@ -718,6 +746,12 @@ thead .hm-name {
   outline: 2px dashed var(--present);
   outline-offset: -4px;
 }
+/* Half-day present day: same green (still "present"), a dotted outline in its
+   own colour so its legend swatch reads apart from a plain present day. */
+.hm-cell.present.half-day {
+  outline: 2px dotted var(--half-day);
+  outline-offset: -4px;
+}
 
 /* "Not clocked in" (absent status) = yellow */
 .hm-cell.absent {
@@ -743,6 +777,19 @@ thead .hm-name {
 }
 .hm-cell.leave .hm-status-label {
   color: var(--absent);
+}
+
+/* Company holiday (HR-marked, no attendance row expected) = teal */
+.hm-cell.holiday {
+  background: var(--holiday-soft);
+  box-shadow: inset 3px 0 0 var(--holiday);
+}
+.hm-cell.holiday .hm-status-label {
+  color: var(--holiday);
+}
+.hm-holiday-name {
+  white-space: normal;
+  line-height: 1.25;
 }
 
 .hm-cell.empty {
@@ -785,6 +832,12 @@ thead .hm-name {
 }
 .hm-swatch.leave {
   background: var(--absent);
+}
+.hm-swatch.half-day {
+  background: var(--half-day);
+}
+.hm-swatch.holiday {
+  background: var(--holiday);
 }
 .hm-swatch.empty {
   background: var(--surface-2);

@@ -132,12 +132,29 @@ export interface Attendance {
   status: AttendanceStatus;
   /** 1 when a present day was manually marked in-office. 0 | 1. */
   in_office: number;
-  /** 1 when a present day was manually marked work-from-home. 0 | 1. */
+  /**
+   * 1 when HR manually marked this day work-from-home. 0 | 1. Usually paired
+   * with status = 'present' (the employee clocked in), but can also be set on
+   * a status = 'absent' day — HR marking someone WFH who never clocked in.
+   * That combination renders identically to a plain "not clocked in" cell
+   * except its second line reads "wfh" instead of "no clock" (see
+   * AttendanceTable/WorkingDays) — it does not turn the box green/dashed.
+   */
   wfh: number;
+  /** 1 when a present day was manually marked half-day. 0 | 1. No payroll effect. */
+  half_day: number;
 }
 
 export interface AttendanceWithName extends Attendance {
   employee_name: string;
+}
+
+/** A national/festival holiday HR marked by hand. One row per calendar date. */
+export interface Holiday {
+  work_date: string;
+  name: string;
+  created_at: string;
+  created_by: number | null;
 }
 
 export interface LeaveRequest {

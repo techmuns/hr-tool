@@ -102,6 +102,21 @@ export function isToday(month: string, day: number): boolean {
   return month === value && day === now.getDate();
 }
 
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Short weekday label ("Mon", "Sat", …) for a day in a "YYYY-MM" month. */
+export function dayOfWeekLabel(month: string, day: number): string {
+  const [year, mon] = month.split("-").map(Number);
+  return WEEKDAY_LABELS[new Date(year, mon - 1, day).getDay()];
+}
+
+/** True for Saturday/Sunday. */
+export function isWeekend(month: string, day: number): boolean {
+  const [year, mon] = month.split("-").map(Number);
+  const dow = new Date(year, mon - 1, day).getDay();
+  return dow === 0 || dow === 6;
+}
+
 /** Human-readable tenure from a "YYYY-MM-DD" join date to today, e.g. "2 yrs 5 mos". */
 export function tenure(dateOfJoining: string): string {
   const start = new Date(dateOfJoining);

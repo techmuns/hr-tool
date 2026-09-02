@@ -146,6 +146,16 @@ export async function runAttendanceReminders(
   const today = utcDate(now);
   const targetDays = recentBusinessDaysBefore(today, ABSENCE_THRESHOLD);
 
+  // A company holiday (HR-marked, see routes/holidays.ts) inside the window
+  // means nobody was expected to clock in that day — treated the same as a
+  // clock-in for the purposes of this check, so a festival day doesn't nag
+  // people who were never supposed to be working it.
+  const holidaysInWindow = await env.DB.prepare(
+    `SELECT 1 FROM holidays WHERE work_date IN (${targetDays.map(() => "?").join(",")}) LIMIT 1`,
+  )
+    .bind(...targetDays)
+    .first();
+
   // The same population the admin attendance grid tracks (see AttendanceTable):
   // people who clock in — employees and HR — but not founders (who don't clock
   // in), freelancers, or anyone HR removed from the list. Only those with an
@@ -170,7 +180,7 @@ export async function runAttendanceReminders(
     )
       .bind(emp.id, ...targetDays)
       .first();
-    if (clockedIn) continue;
+    if (clockedIn || holidaysInWindow) continue;
 
     // Their most recent clock-in ever (null if they've never clocked in). Used
     // only to tell absence streaks apart for de-duping.
