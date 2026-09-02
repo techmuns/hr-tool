@@ -372,7 +372,6 @@ export function Payroll() {
             <th>Base Salary</th>
             <th>Reimbursements</th>
             <th>Paid Days</th>
-            <th title="In-office days for in-office & hybrid staff — present days this cycle minus WFH days (auto)">In office</th>
             <th title="Days HR marked work-from-home this cycle (nothing is counted automatically)">WFH days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
@@ -424,19 +423,6 @@ export function Payroll() {
                 )}
               </td>
               <td>{row.paid_days}</td>
-              <td
-                title={
-                  row.work_mode === "in-office" || row.work_mode === "hybrid"
-                    ? `${Math.max(0, row.present_days - row.wfh_days)} in-office of ${row.present_days} present days (minus ${row.wfh_days} WFH)`
-                    : "Remote employee"
-                }
-              >
-                {row.work_mode === "in-office" || row.work_mode === "hybrid" ? (
-                  Math.max(0, row.present_days - row.wfh_days)
-                ) : (
-                  <span className="muted">—</span>
-                )}
-              </td>
               <td title={`${row.wfh_days} day${row.wfh_days === 1 ? "" : "s"} marked WFH this cycle`}>
                 {row.wfh_days > 0 ? row.wfh_days : <span className="muted">—</span>}
               </td>
@@ -514,7 +500,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={12} className="muted">
+              <td colSpan={11} className="muted">
                 {loading ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>
