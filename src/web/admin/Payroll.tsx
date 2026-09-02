@@ -372,6 +372,7 @@ export function Payroll() {
             <th>Base Salary</th>
             <th>Reimbursements</th>
             <th>Paid Days</th>
+            <th title="Present days HR marked half day this cycle (nothing is counted automatically)">Half days</th>
             <th title="Days HR marked work-from-home this cycle (nothing is counted automatically)">WFH days</th>
             <th>Deductions</th>
             <th>Net Pay</th>
@@ -423,6 +424,9 @@ export function Payroll() {
                 )}
               </td>
               <td>{row.paid_days}</td>
+              <td title={`${row.half_days} day${row.half_days === 1 ? "" : "s"} marked half day this cycle`}>
+                {row.half_days > 0 ? row.half_days : <span className="muted">—</span>}
+              </td>
               <td title={`${row.wfh_days} day${row.wfh_days === 1 ? "" : "s"} marked WFH this cycle`}>
                 {row.wfh_days > 0 ? row.wfh_days : <span className="muted">—</span>}
               </td>
@@ -500,7 +504,7 @@ export function Payroll() {
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={11} className="muted">
+              <td colSpan={12} className="muted">
                 {loading ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>

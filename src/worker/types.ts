@@ -235,6 +235,8 @@ export interface AdminPayrollRow extends PayrollWithName {
   work_mode: WorkMode;
   present_days: number;
   in_office_days: number;
+  /** Present days HR manually flagged half-day this cycle. */
+  half_days: number;
   /** Days HR manually flagged work-from-home this cycle (nothing is inferred). */
   wfh_days: number;
   /**
