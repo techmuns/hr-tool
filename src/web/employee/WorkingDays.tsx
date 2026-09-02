@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
-import { currentMonth, dayKey, daysForMonth, formatTime, isToday, recentMonths, todayISODate } from "../date";
+import {
+  currentMonth,
+  dayKey,
+  daysForMonth,
+  dayOfWeekLabel,
+  formatTime,
+  isToday,
+  isWeekend,
+  recentMonths,
+  todayISODate,
+} from "../date";
 import { scrollToToday } from "../scrollToToday";
-import type { Attendance, AttendanceStatus, Employee } from "../types";
+import type { Attendance, AttendanceStatus, Employee, Holiday } from "../types";
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: "Present",
@@ -14,6 +24,7 @@ const STATUS_LABEL: Record<AttendanceStatus, string> = {
 export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
   const [month, setMonth] = useState(currentMonth());
   const [rows, setRows] = useState<Attendance[]>([]);
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [dateOfJoining, setDateOfJoining] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -35,11 +46,20 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
   }, [month, refreshSignal]);
 
+  useEffect(() => {
+    api
+      .get<Holiday[]>("/holidays")
+      .then(setHolidays)
+      .catch(() => {});
+  }, [refreshSignal]);
+
   const byDate = useMemo(() => {
     const map = new Map<string, Attendance>();
     for (const row of rows) map.set(row.work_date, row);
     return map;
   }, [rows]);
+
+  const holidayByDate = useMemo(() => new Map(holidays.map((h) => [h.work_date, h])), [holidays]);
 
   useEffect(() => {
     scrollToToday(scrollRef.current);
@@ -63,11 +83,22 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
         <table className="heatmap-grid">
           <thead>
             <tr>
-              {days.map((day) => (
-                <th key={day} className={isToday(month, day) ? "today-col" : undefined}>
-                  {day}
-                </th>
-              ))}
+              {days.map((day) => {
+                const holiday = holidayByDate.get(dayKey(month, day));
+                const cls = [
+                  isToday(month, day) ? "today-col" : "",
+                  isWeekend(month, day) ? "weekend-col" : "",
+                  holiday ? "holiday-col" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <th key={day} className={cls || undefined} title={holiday ? holiday.name : undefined}>
+                    <span className="hm-dow">{dayOfWeekLabel(month, day)}</span>
+                    <span className="hm-daynum">{day}</span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
@@ -75,15 +106,19 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
               {days.map((day) => {
                 const row = byDate.get(dayKey(month, day));
                 const dateStr = dayKey(month, day);
+                const holiday = holidayByDate.get(dateStr);
                 const started = dateStr <= todayISODate();
                 const onOrAfterJoin = dateOfJoining != null && dateStr >= dateOfJoining;
-                const isSyntheticAbsent = !row && started && onOrAfterJoin;
-                const cls = row?.status ?? (isSyntheticAbsent ? "absent" : "empty");
+                const isHoliday = !row && Boolean(holiday);
+                const isSyntheticAbsent = !row && !holiday && started && onOrAfterJoin;
+                const cls = row?.status ?? (isSyntheticAbsent ? "absent" : isHoliday ? "holiday" : "empty");
                 const title = row
-                  ? `${dateStr}: ${STATUS_LABEL[row.status]}`
-                  : isSyntheticAbsent
-                    ? `${dateStr}: Not clocked in`
-                    : `${dateStr}: no record`;
+                  ? `${dateStr}: ${STATUS_LABEL[row.status]}${row.status === "absent" && row.wfh ? " (WFH, HR-marked)" : ""}`
+                  : isHoliday
+                    ? `${dateStr}: Holiday — ${holiday!.name}`
+                    : isSyntheticAbsent
+                      ? `${dateStr}: Not clocked in`
+                      : `${dateStr}: no record`;
                 return (
                   <td key={day}>
                     <div className={`hm-cell ${cls}`} title={title}>
@@ -102,7 +137,9 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
                               </span>
                             </span>
                           ) : (
-                            <span className="hm-times hm-noclock">no clock</span>
+                            <span className="hm-times hm-noclock">
+                              {row.status === "absent" && row.wfh ? "wfh" : "no clock"}
+                            </span>
                           )}
                         </>
                       ) : isSyntheticAbsent ? (
@@ -110,6 +147,8 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
                           <span className="hm-status-label">{STATUS_LABEL.absent}</span>
                           <span className="hm-times hm-noclock">no clock</span>
                         </>
+                      ) : isHoliday ? (
+                        <span className="hm-status-label hm-holiday-name">{holiday!.name}</span>
                       ) : null}
                     </div>
                   </td>
@@ -129,6 +168,9 @@ export function WorkingDays({ refreshSignal = 0 }: { refreshSignal?: number }) {
         </span>
         <span className="hm-legend-item">
           <span className="hm-swatch leave" /> Leave
+        </span>
+        <span className="hm-legend-item">
+          <span className="hm-swatch holiday" /> Holiday
         </span>
         <span className="hm-legend-item">
           <span className="hm-swatch empty" /> No record

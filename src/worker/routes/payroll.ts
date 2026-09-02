@@ -37,8 +37,11 @@ app.get("/admin/payroll", async (c) => {
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.in_office = 1
                  AND a.work_date BETWEEN ? AND ?) AS in_office_days,
+            -- Not restricted to status = 'present': HR can also mark WFH on a
+            -- day nobody clocked in on (status stays 'absent'), and that still
+            -- counts here — see routes/attendance.ts.
             (SELECT COUNT(*) FROM attendance a
-               WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.wfh = 1
+               WHERE a.employee_id = p.employee_id AND a.wfh = 1
                  AND a.work_date BETWEEN ? AND ?) AS wfh_days
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id

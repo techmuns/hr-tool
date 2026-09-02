@@ -13,6 +13,7 @@ export type {
   Role,
   Attendance,
   AttendanceWithName,
+  Holiday,
   LeaveRequest,
   LeaveRequestWithName,
   Feedback,
