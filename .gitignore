@@ -5,3 +5,9 @@ dist/
 .env
 .env.local
 *.log
+
+# D1 dumps. An export of hr-tool-db contains salaries, personal email addresses,
+# bcrypt password hashes and session token hashes, so no .sql file is committable
+# by default — the schema migrations are the one deliberate exception.
+*.sql
+!migrations/*.sql

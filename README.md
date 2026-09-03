@@ -93,8 +93,58 @@ echo 'MUNS_TOKEN=<token>' > .dev.vars  # local dev (.dev.vars is gitignored)
 
 ## Deploy
 
+Deploys run on **GitHub Actions**, not Cloudflare's git integration. Every push to
+the production branch (`claude/new-session-bzbrrb`) runs
+`.github/workflows/deploy.yml`: install, build, `npm test`, then `wrangler deploy`.
+A red test suite blocks the deploy. The workflow can also be run by hand from the
+Actions tab (`workflow_dispatch`).
+
+`wrangler deploy` re-runs the `build.command` in `wrangler.jsonc`, which rebuilds
+the SPA and applies remote D1 migrations via `scripts/ci-migrate.sh`. So schema
+changes ship with the code that needs them, and a failed migration fails the
+deploy instead of shipping a Worker against a schema that was never created.
+
+### Which Cloudflare account it deploys to
+
+Nothing in this repository names a Cloudflare account. The destination is decided
+entirely by two repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | What it is |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | API token for the destination account |
+| `CLOUDFLARE_ACCOUNT_ID` | Destination account ID |
+
+Setting these is a one-time action; after that every push deploys automatically
+with no manual step. Moving the deployment to a different Cloudflare account
+means swapping those two secrets (and the `d1_databases[0].database_id` in
+`wrangler.jsonc`) — nothing else.
+
+The token is least-privilege. It needs exactly:
+
+- Account → **Workers Scripts** → Edit
+- Account → **D1** → Edit
+- Account → **Account Settings** → Read
+- Account → **Workers KV Storage** → Edit
+
+It does *not* need Zone → Workers Routes (no custom domain is in use) or R2
+(the `BILLS` bucket is disabled).
+
+### Worker secrets
+
+`MUNS_TOKEN` is **not** managed by CI and is not a GitHub secret. It lives on the
+Worker itself and survives deploys:
+
 ```bash
-npm run db:migrate:remote   # once, against the real D1 database
+npx wrangler secret put MUNS_TOKEN
+```
+
+Without it every outgoing email fails, which means OTP login fails for everyone —
+so it must exist on the Worker before the first real user hits it.
+
+### Manual deploy (fallback)
+
+```bash
+npm run db:migrate:remote   # against the real D1 database
 npm run deploy
 ```
 

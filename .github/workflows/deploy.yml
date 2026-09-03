@@ -1,0 +1,84 @@
+# Production deploy for the HR Tool Worker.
+#
+# This replaces Cloudflare's own git integration (Workers Builds). The Cloudflare
+# account that receives the deploy is decided entirely by the CLOUDFLARE_API_TOKEN
+# and CLOUDFLARE_ACCOUNT_ID repository secrets — nothing about the destination
+# account is committed to this repo, so moving accounts again later is a secret
+# swap and nothing more.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   CLOUDFLARE_API_TOKEN   API token for the destination account. Least privilege:
+#                          Account > Workers Scripts > Edit
+#                          Account > D1 > Edit
+#                          Account > Account Settings > Read
+#                          Account > Workers KV Storage > Edit
+#   CLOUDFLARE_ACCOUNT_ID  Destination account ID.
+#
+# Worker secrets (MUNS_TOKEN) are NOT managed here. They live on the Worker and
+# are set once with `wrangler secret put MUNS_TOKEN`; a deploy never overwrites
+# them, so the value never has to pass through GitHub.
+
+name: Deploy to Cloudflare Workers
+
+on:
+  push:
+    branches: [claude/new-session-bzbrrb]
+  workflow_dispatch:
+
+# Never let two deploys race to the same Worker. Queue instead of cancelling —
+# a half-finished deploy that got cancelled is worse than waiting.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build, test and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # dist/client has to exist before the Worker test suite can boot the
+      # static-assets binding, so the build comes first and the deploy is gated
+      # on the tests passing.
+      - name: Build SPA
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      # `wrangler deploy` re-runs the `build.command` declared in wrangler.jsonc,
+      # which rebuilds the SPA and applies remote D1 migrations through
+      # scripts/ci-migrate.sh (that script keys off CI=true, which GitHub Actions
+      # sets). That is deliberately the exact same sequence Cloudflare's Workers
+      # Builds ran, so this pipeline is behaviour-for-behaviour identical to the
+      # one it replaces. Migrations are idempotent, so the second run is a no-op.
+      #
+      # The credentials are also exported at step level because ci-migrate.sh
+      # shells out to its own `npx wrangler`, which needs them in its environment.
+      # GitHub masks both values in logs; nothing here echoes them.
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Pinned to the version in package-lock.json so CI matches local and
+          # matches what production has always been deployed with. Bumping to
+          # wrangler v4 is separate work, not part of the account migration.
+          wranglerVersion: "3.114.17"
+          command: deploy
