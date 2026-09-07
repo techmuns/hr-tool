@@ -37,6 +37,9 @@ app.get("/admin/payroll", async (c) => {
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.in_office = 1
                  AND a.work_date BETWEEN ? AND ?) AS in_office_days,
+            (SELECT COUNT(*) FROM attendance a
+               WHERE a.employee_id = p.employee_id AND a.status = 'present' AND a.half_day = 1
+                 AND a.work_date BETWEEN ? AND ?) AS half_days,
             -- Not restricted to status = 'present': HR can also mark WFH on a
             -- day nobody clocked in on (status stays 'absent'), and that still
             -- counts here — see routes/attendance.ts.
@@ -49,7 +52,7 @@ app.get("/admin/payroll", async (c) => {
      WHERE p.period = ? AND e.archived = 0
      ORDER BY e.name ASC`
   )
-    .bind(cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, period)
+    .bind(cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, period)
     .all<AdminPayrollRow>();
 
   return c.json(rows.results);

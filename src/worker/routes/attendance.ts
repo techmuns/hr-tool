@@ -169,6 +169,23 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
 });
 
 /**
+ * Clear one person's record for one day, so the cell falls back to the grid's
+ * default for that date (a holiday, if HR marked one — see the Holiday option
+ * in the attendance cell editor — otherwise "not clocked in" / no record).
+ */
+app.delete("/admin/attendance/day/:employeeId/:date", requireAdmin, async (c) => {
+  const employeeId = Number(c.req.param("employeeId"));
+  const date = c.req.param("date") ?? "";
+  if (Number.isNaN(employeeId)) return c.json({ error: "Invalid employee id" }, 400);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return c.json({ error: "Invalid date" }, 400);
+
+  await c.env.DB.prepare("DELETE FROM attendance WHERE employee_id = ? AND work_date = ?")
+    .bind(employeeId, date)
+    .run();
+  return c.json({ ok: true });
+});
+
+/**
  * Remove someone from the attendance list: flag them off-attendance so they no
  * longer appear in the admin attendance grid. Their existing records are kept.
  * Re-add them from the employee panel's "Include in attendance list" toggle.
