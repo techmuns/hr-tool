@@ -22,7 +22,6 @@
  * clients that strip <style> would drop that breakpoint too.
  */
 
-import { MUNSHOT_LOGO_DATA_URI } from "./munshotLogo";
 import { COMPANY_NAME, COMPANY_ADDRESS, BUSINESS_UNIT, BRAND_COLORS } from "./brand";
 import { escapeHtml } from "./htmlEscape";
 import type { EmploymentType } from "./types";
@@ -136,7 +135,6 @@ export interface PayslipRow {
   job_title: string;
   employment_type: EmploymentType;
   date_of_joining: string;
-  location: string;
   period: string;
   paid_days: number;
   unpaid_days: number;
@@ -262,9 +260,11 @@ const EMPLOYMENT_TYPE_LABEL: Record<EmploymentType, string> = {
 /**
  * The single source of truth for what a payslip shows, shared by the emailed
  * HTML (payslipHtml, below) and the downloadable PDF (../web/payslipPdf.ts) so
- * the two can never drift. The layout mirrors a standard Indian salary slip;
- * fields this tool doesn't track (PF, ESIC, UAN, PAN, sub-department, arrears)
- * are shown as N.A. rather than dropped, so the format stays intact.
+ * the two can never drift. The layout mirrors a standard Indian salary slip,
+ * trimmed to the rows Munshot actually prints: the statutory identifiers this
+ * tool doesn't track (PF, ESIC, UAN, PAN) and sub-department used to sit in the
+ * grid as N.A. placeholders, and office location as a real value nobody needed
+ * on a slip. All six are gone rather than shown empty.
  */
 export function payslipModel(r: PayslipRow): PayslipModel {
   const daysInMonth = r.paid_days + r.unpaid_days; // company standard working days (24)
@@ -276,17 +276,11 @@ export function payslipModel(r: PayslipRow): PayslipModel {
     { label: "Employee Code", value: `EMP${String(r.employee_id).padStart(4, "0")}` },
     { label: "Designation", value: r.job_title || NA },
     { label: "Duration", value: cycleLabel(r.period) },
-    { label: "Sub Department", value: NA },
     { label: "Date of Joining", value: r.date_of_joining ? dateLabel(r.date_of_joining) : NA },
     { label: "No. of Days in Month", value: String(daysInMonth) },
     { label: "Working Days", value: String(r.paid_days) },
     { label: "LOP (days)", value: String(r.unpaid_days) },
-    { label: "Provident Fund", value: NA },
-    { label: "ESIC Number", value: NA },
-    { label: "Current Office Location", value: r.location || NA },
     { label: "Total Arrear Days", value: "0" },
-    { label: "UAN No", value: NA },
-    { label: "PAN No", value: NA },
     { label: "Payment Status", value: status },
   ];
 
@@ -318,8 +312,8 @@ export function payslipModel(r: PayslipRow): PayslipModel {
 
 /**
  * The payslip as an HTML document for the `html` field of the Muns raw email
- * API (see ../email.ts). A bordered, table-based salary slip — company header,
- * a titled slip line, a two-column employee-details grid, an
+ * API (see ../email.ts). A bordered, table-based salary slip — a company name
+ * and address header, a titled slip line, a two-column employee-details grid, an
  * earnings/deductions table, the A/B/net-pay rows with the amount in words, and
  * a footer note. Every rule is inlined and the layout is tables, since mail
  * clients strip <style> and don't do flexbox/grid.
@@ -368,24 +362,21 @@ export function payslipHtml(r: PayslipRow): string {
   const html = `
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;max-width:760px;margin:0 auto;background:#ffffff;border:1px solid ${LINE};font-family:Arial,Helvetica,sans-serif;">
     <tr>
-      <td width="150" style="${cell}text-align:center;vertical-align:middle;padding:12px;">
-        <img src="${MUNSHOT_LOGO_DATA_URI}" width="58" height="58" alt="${escapeHtml(m.company.name)}" style="display:inline-block;border-radius:8px;">
-      </td>
-      <td style="${cell}padding:12px 16px;vertical-align:middle;">
+      <td style="${cell}padding:14px 16px;vertical-align:middle;">
         <div style="font-size:22px;font-weight:bold;color:${INK};">${escapeHtml(m.company.name)}</div>
         ${addressLines}
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="${cell}text-align:center;padding:11px;font-size:16px;color:${INK};">${escapeHtml(m.title)}</td>
+      <td style="${cell}text-align:center;padding:11px;font-size:16px;color:${INK};">${escapeHtml(m.title)}</td>
     </tr>
     <tr>
-      <td colspan="2" style="padding:0;">
+      <td style="padding:0;">
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">${fieldRows.join("")}</table>
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="padding:0;">
+      <td style="padding:0;">
         <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr>
             <td colspan="2" style="${cell}${pad}${headFill}text-align:center;font-weight:bold;color:${INK};">Earnings</td>
@@ -414,7 +405,7 @@ export function payslipHtml(r: PayslipRow): string {
       </td>
     </tr>
     <tr>
-      <td colspan="2" style="${cell}text-align:center;padding:9px;font-size:12px;color:${MUTED};"><b style="color:${INK};">Note:</b> ${escapeHtml(m.note)}</td>
+      <td style="${cell}text-align:center;padding:9px;font-size:12px;color:${MUTED};"><b style="color:${INK};">Note:</b> ${escapeHtml(m.note)}</td>
     </tr>
   </table>`;
 

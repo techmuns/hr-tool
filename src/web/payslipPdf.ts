@@ -1,5 +1,4 @@
 import { payslipModel, rupeesPlain, PAYSLIP_COLORS } from "../worker/payslip";
-import { MUNSHOT_LOGO_DATA_URI } from "../worker/munshotLogo";
 import type { PayslipField, PayslipRow } from "../worker/payslip";
 
 const { INK, MUTED } = PAYSLIP_COLORS;
@@ -21,7 +20,7 @@ interface CellOpts {
  * "Download PDF" for a single payslip — the same bordered salary slip that goes
  * out by email (payslipHtml in ../worker/payslip.ts), redrawn with jsPDF since
  * it has no HTML renderer. Both consume payslipModel() so the two never drift:
- * the company header, the titled slip line, the two-column employee grid, the
+ * the company name/address header, the titled slip line, the employee grid, the
  * earnings/deductions table with A/B/net-pay rows and the amount in words, and
  * the footer note. Amounts use plain numbers (no glyph) under an "Amount (Rs.)"
  * header, since jsPDF's built-in fonts can't render the rupee sign.
@@ -76,30 +75,30 @@ export async function exportPayslipPdf(r: PayslipRow): Promise<void> {
 
   let y = 14;
 
-  // --- Header: logo cell | company info -------------------------------------
-  const headH = 26;
-  const logoW = 42;
+  // --- Header: company name over its address lines ---------------------------
+  const subLines = [
+    m.company.address ? `Office Address : ${m.company.address}` : "",
+    m.company.businessUnit ? `Business Unit : ${m.company.businessUnit}` : "",
+  ].filter(Boolean);
+  // Sized to the text it actually holds. Both address lines are optional (blank
+  // constants in ../worker/brand.ts drop them, as the HTML card does), and the
+  // fixed height this band used to have was the logo's — without it, a fixed
+  // height would leave the company name floating over empty space.
+  const headH = 12 + subLines.length * 5;
+  const infoX = X0 + 4;
   box(X0, y, W, headH);
-  doc.setDrawColor(BORDER);
-  doc.line(X0 + logoW, y, X0 + logoW, y + headH); // divider
-  const logoSize = 16;
-  doc.addImage(MUNSHOT_LOGO_DATA_URI, "PNG", X0 + (logoW - logoSize) / 2, y + (headH - logoSize) / 2, logoSize, logoSize);
 
-  let infoY = y + 10;
+  let infoY = y + 8;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(16);
   doc.setTextColor(INK);
-  doc.text(m.company.name, X0 + logoW + 4, infoY);
+  doc.text(m.company.name, infoX, infoY);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(MUTED);
-  if (m.company.address) {
-    infoY += 6;
-    doc.text(`Office Address : ${m.company.address}`, X0 + logoW + 4, infoY);
-  }
-  if (m.company.businessUnit) {
-    infoY += 4.5;
-    doc.text(`Business Unit : ${m.company.businessUnit}`, X0 + logoW + 4, infoY);
+  for (const line of subLines) {
+    infoY += 5;
+    doc.text(line, infoX, infoY);
   }
   y += headH;
 

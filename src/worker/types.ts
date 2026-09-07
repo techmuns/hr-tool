@@ -220,10 +220,9 @@ export interface PayrollWithName extends Payroll {
   employee_email: string;
   /** Needed by the "Download PDF" button — it renders the same card as the email. */
   job_title: string;
-  /** Payslip header details (Employee Type / Date of Joining / Office Location). */
+  /** Payslip header details (Employee Type / Date of Joining). */
   employment_type: EmploymentType;
   date_of_joining: string;
-  location: string;
 }
 
 /**

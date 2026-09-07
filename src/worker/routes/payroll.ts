@@ -27,7 +27,7 @@ app.get("/admin/payroll", async (c) => {
   const cycle = payCycle(period);
   const rows = await c.env.DB.prepare(
     `SELECT p.*, e.name AS employee_name, e.email AS employee_email, e.job_title,
-            e.employment_type, e.date_of_joining, e.location, e.work_mode,
+            e.employment_type, e.date_of_joining, e.work_mode,
             rb.total AS reimbursement_breakup_total,
             rb.entries AS reimbursement_breakup_entries,
             rb.full_reimbursement AS reimbursement_breakup_full,
@@ -246,7 +246,7 @@ app.post("/admin/payroll/email", async (c) => {
     `SELECT p.id, p.employee_id, p.period, p.paid_days, p.unpaid_days, p.base_salary, p.reimbursements,
             p.deductions, p.leave_deductions, p.other_deductions, p.net_pay, p.paid_at,
             e.name AS employee_name, e.email AS employee_email, e.job_title,
-            e.employment_type, e.date_of_joining, e.location
+            e.employment_type, e.date_of_joining
      FROM payroll p
      JOIN employees e ON e.id = p.employee_id
      WHERE p.period = ? AND p.employee_id IN (${ids.map(() => "?").join(",")})
