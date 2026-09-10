@@ -5,20 +5,27 @@ import { Button } from "../components/ui/Button";
 import { recentMonths, todayISODate } from "../date";
 import { formatINR } from "../money";
 import { cycleLabel, periodForDate } from "../../worker/payslip";
+import { reimbursedForEntry, reimbursedTotal } from "../../worker/reimbursement";
 import type { BreakupEntry, Employee, ReimbursementBreakup } from "../types";
 
 interface EditRow {
   label: string;
   amount: string; // rupees, as typed
+  full: boolean; // this line's rate: true = 100%, false = 50%
+}
+
+/** Paise for one edited line — the typed rupee amount, clamped and rounded. */
+function rowPaise(r: EditRow): number {
+  return Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100));
 }
 
 /**
  * HR-only notepad for the daily reimbursement breakup. HR picks a cycle and a
- * person, writes labelled lines with amounts, and saves; payroll then reimburses
- * HALF the logged total by default and shows the breakup in the Payroll
- * reimbursements dropdown. The "100% instead of 50%" checkbox is an
- * admin-only override — it's part of this HR-only form, so only HR/founder
- * (role=admin) accounts can ever reach it; the backend re-checks tier === 'hr'
+ * person, writes labelled lines with amounts, and picks each line's rate —
+ * 100% or 50% — individually; payroll then reimburses the sum of those per-line
+ * rates and shows the breakup in the Payroll reimbursements dropdown. New lines
+ * default to 50% (the standard rate); HR bumps the ones that should pay in full
+ * to 100%. This whole form is HR-only, so the backend re-checks tier === 'hr'
  * on save regardless of what the client sends. Founders don't see this tab
  * (they can view the breakup on Payroll).
  */
@@ -28,7 +35,6 @@ export function ReimbursementNotes() {
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rows, setRows] = useState<EditRow[]>([]);
-  const [fullReimbursement, setFullReimbursement] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -60,17 +66,17 @@ export function ReimbursementNotes() {
     const existing = breakups[id];
     setRows(
       existing && existing.entries.length
-        ? existing.entries.map((e) => ({ label: e.label, amount: (e.amount / 100).toFixed(2) }))
-        : [{ label: "", amount: "" }],
+        ? existing.entries.map((e) => ({ label: e.label, amount: (e.amount / 100).toFixed(2), full: e.full }))
+        : [{ label: "", amount: "", full: false }],
     );
-    setFullReimbursement(existing?.full_reimbursement ?? false);
   }
 
-  function updateRow(i: number, field: keyof EditRow, value: string) {
-    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, [field]: value } : r)));
+  function updateRow(i: number, patch: Partial<EditRow>) {
+    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
   }
 
-  const totalPaise = rows.reduce((s, r) => s + Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)), 0);
+  const totalPaise = rows.reduce((s, r) => s + rowPaise(r), 0);
+  const reimbursedPaise = reimbursedTotal(rows.map((r) => ({ amount: rowPaise(r), full: r.full })));
 
   async function save() {
     if (selectedId == null) return;
@@ -79,21 +85,16 @@ export function ReimbursementNotes() {
     setStatus(null);
     try {
       const entries: BreakupEntry[] = rows
-        .map((r) => ({
-          label: r.label.trim(),
-          amount: Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)),
-        }))
+        .map((r) => ({ label: r.label.trim(), amount: rowPaise(r), full: r.full }))
         .filter((e) => e.label !== "" || e.amount > 0);
       const saved = await api.put<ReimbursementBreakup>("/admin/reimbursement-breakup", {
         employee_id: selectedId,
         period,
         entries,
-        full_reimbursement: fullReimbursement,
       });
       setBreakups((m) => ({ ...m, [selectedId]: saved }));
-      const reimbursed = fullReimbursement ? totalPaise : Math.round(totalPaise / 2);
       setStatus(
-        `Saved — reimbursing ${formatINR(reimbursed)} (${fullReimbursement ? "100%" : "50%"} of ${formatINR(totalPaise)}).`,
+        `Saved — reimbursing ${formatINR(saved.reimbursed)} of ${formatINR(saved.total)} logged (per-line 100% / 50%).`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -119,9 +120,9 @@ export function ReimbursementNotes() {
     >
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Payroll reimburses{" "}
-        <b>50%</b> of the total you enter by default, and shows this breakup in the Payroll reimbursements
-        dropdown. Admins can switch a cycle to reimburse the full amount instead.
+        Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Set each line to reimburse{" "}
+        <b>50%</b> (the default) or <b>100%</b> — payroll reimburses the sum of those per-line rates and shows this
+        breakup in the Payroll reimbursements dropdown.
       </p>
 
       <div className="row">
@@ -146,19 +147,13 @@ export function ReimbursementNotes() {
 
       {selected && (
         <div style={{ marginTop: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={fullReimbursement}
-              onChange={(e) => setFullReimbursement(e.target.checked)}
-            />
-            Reimburse 100% instead of 50% (admin-only)
-          </label>
           <table>
             <thead>
               <tr>
                 <th>Note / day</th>
-                <th style={{ width: 160 }}>Amount (INR)</th>
+                <th style={{ width: 150 }}>Amount (INR)</th>
+                <th style={{ width: 110 }}>Reimburse</th>
+                <th style={{ width: 130 }}>Payout</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
@@ -170,7 +165,7 @@ export function ReimbursementNotes() {
                       type="text"
                       placeholder="e.g. Mon — client travel"
                       value={r.label}
-                      onChange={(e) => updateRow(i, "label", e.target.value)}
+                      onChange={(e) => updateRow(i, { label: e.target.value })}
                     />
                   </td>
                   <td>
@@ -180,9 +175,20 @@ export function ReimbursementNotes() {
                       min={0}
                       placeholder="0.00"
                       value={r.amount}
-                      onChange={(e) => updateRow(i, "amount", e.target.value)}
+                      onChange={(e) => updateRow(i, { amount: e.target.value })}
                     />
                   </td>
+                  <td>
+                    <select
+                      value={r.full ? "100" : "50"}
+                      onChange={(e) => updateRow(i, { full: e.target.value === "100" })}
+                      title="How much of this line to reimburse"
+                    >
+                      <option value="50">50%</option>
+                      <option value="100">100%</option>
+                    </select>
+                  </td>
+                  <td style={{ textAlign: "right" }}>{formatINR(reimbursedForEntry(rowPaise(r), r.full))}</td>
                   <td>
                     <button
                       type="button"
@@ -199,17 +205,25 @@ export function ReimbursementNotes() {
             <tfoot>
               <tr>
                 <td>
-                  <button type="button" className="link-btn" onClick={() => setRows((rs) => [...rs, { label: "", amount: "" }])}>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setRows((rs) => [...rs, { label: "", amount: "", full: false }])}
+                  >
                     + Add line
                   </button>
                 </td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatINR(totalPaise)}</td>
                 <td></td>
+                <td></td>
+                <td></td>
               </tr>
               <tr>
-                <td className="muted">Reimbursed ({fullReimbursement ? "100%" : "50%"})</td>
-                <td className="muted" style={{ textAlign: "right" }}>
-                  {formatINR(fullReimbursement ? totalPaise : Math.round(totalPaise / 2))}
+                <td className="muted">Total reimbursed</td>
+                <td></td>
+                <td></td>
+                <td className="muted" style={{ textAlign: "right", fontWeight: 700 }}>
+                  {formatINR(reimbursedPaise)}
                 </td>
                 <td></td>
               </tr>

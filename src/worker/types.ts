@@ -241,14 +241,16 @@ export interface AdminPayrollRow extends PayrollWithName {
   wfh_days: number;
   /**
    * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
-   * above already reflects HALF of this total, or ALL of it when an admin has
-   * flipped `reimbursement_breakup_full` on; the raw total and entries are
-   * here so the Payroll tab can show the full breakdown in a dropdown. Null
-   * when HR hasn't entered one (approved requests stand).
+   * above already reflects `reimbursement_breakup_reimbursed` — each logged line
+   * at HR's chosen 100%/50% rate, summed. The raw total, the reimbursed total
+   * and the entries (with per-line rates) are here so the Payroll tab can show
+   * the full breakdown in a dropdown. Null when HR hasn't entered one (approved
+   * requests stand).
    */
   reimbursement_breakup_total: number | null;
+  reimbursement_breakup_reimbursed: number | null;
   reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
-  /** 1 when this breakup pays out in full instead of the standard 50%. */
+  /** Legacy cycle-wide flag; per-line rates live in the entries JSON now. */
   reimbursement_breakup_full: number | null;
 }
 
@@ -256,6 +258,8 @@ export interface AdminPayrollRow extends PayrollWithName {
 export interface BreakupEntry {
   label: string;
   amount: number;
+  /** Per-line rate HR chose: true = reimburse 100%, false = 50% (the default). */
+  full: boolean;
 }
 
 /** HR's reimbursement notepad for one employee in one pay cycle. */
@@ -263,8 +267,16 @@ export interface ReimbursementBreakup {
   employee_id: number;
   period: string;
   entries: BreakupEntry[];
+  /** Sum of every line's logged amount, in paise. */
   total: number;
-  /** Admin-only: pays out the FULL total instead of the standard 50%. */
+  /** What payroll actually reimburses: each line at its own rate, summed. */
+  reimbursed: number;
+  /**
+   * Legacy cycle-wide flag, kept only for older rows and as the fallback rate
+   * for any line whose per-line `full` is missing. New saves set it to 1 only
+   * when every line is at 100%; the per-line rates in `entries` are the source
+   * of truth now.
+   */
   full_reimbursement: boolean;
   updated_at: string;
 }
