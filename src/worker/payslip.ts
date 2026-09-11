@@ -109,6 +109,17 @@ export function periodForDate(iso: string): string {
   return d.toISOString().slice(0, 7);
 }
 
+/**
+ * Step a "YYYY-MM" period by whole months — the arithmetic behind moving from
+ * one cycle to the next, or back to the one before. Date normalises the year
+ * boundary, so shiftPeriod("2026-01", -1) is "2025-12".
+ */
+export function shiftPeriod(period: string, months: number): string {
+  const [year, month] = period.split("-").map(Number);
+  if (!year || !month) return period;
+  return new Date(Date.UTC(year, month - 1 + months, 1)).toISOString().slice(0, 7);
+}
+
 /** The date a period's salaries are due — the 11th that closes the cycle. */
 export function payDueDate(period: string): string {
   return payCycle(period).payDate;

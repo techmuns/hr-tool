@@ -1,5 +1,7 @@
 // All times come from the worker as UTC ISO strings and are displayed in IST,
 // so everyone sees the same clock regardless of their device's timezone.
+import { cycleLabel, periodForDate, shiftPeriod } from "../worker/payslip";
+
 const IST = "Asia/Kolkata";
 const LOCALE = "en-IN";
 
@@ -76,6 +78,42 @@ export function recentMonths(count = 12): MonthOption[] {
     options.push({ value, label });
   }
   return options.filter((o) => o.value >= EARLIEST_VISIBLE_MONTH);
+}
+
+/**
+ * Earliest pay cycle worth offering. Attendance starts EARLIEST_VISIBLE_DATE,
+ * and the cycle that date falls in is the first one with any real data behind
+ * it — anything older would bill a period the company wasn't using the tool for.
+ */
+const EARLIEST_VISIBLE_PERIOD = periodForDate(EARLIEST_VISIBLE_DATE);
+
+/**
+ * Pay cycles for a period picker, newest first — NOT the same list as
+ * recentMonths().
+ *
+ * Cycles run 11th-to-10th and are named for the month they're paid in, so from
+ * the 11th onwards the cycle now accruing is NEXT calendar month's period.
+ * recentMonths() counts back from the current calendar month and so never
+ * contains it: on the 11th the picker's own default value was absent from its
+ * options, which is what left the Reimb. Notes dropdown blank and made the
+ * cycle everyone had been logging against unreachable.
+ *
+ * `include` is the period actually selected. It's forced into the list wherever
+ * it sorts, so no matter how far back someone navigates — or how long a cycle
+ * is held open for unpaid dues — the picker can always show where it is.
+ */
+export function recentPeriods(count = 12, include?: string): MonthOption[] {
+  const newest = periodForDate(todayISODate());
+  const values = new Set<string>();
+  for (let i = 0; i < count; i++) {
+    const value = shiftPeriod(newest, -i);
+    if (value >= EARLIEST_VISIBLE_PERIOD) values.add(value);
+  }
+  if (include) values.add(include);
+
+  return [...values]
+    .sort((a, b) => b.localeCompare(a))
+    .map((value) => ({ value, label: cycleLabel(value) }));
 }
 
 /**

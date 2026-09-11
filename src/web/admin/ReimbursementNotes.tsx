@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
-import { recentMonths, todayISODate } from "../date";
+import { recentPeriods, todayISODate } from "../date";
 import { formatINR } from "../money";
+import { useActiveCycle } from "../hooks/useActiveCycle";
 import { cycleLabel, periodForDate } from "../../worker/payslip";
 import type { BreakupEntry, Employee, ReimbursementBreakup } from "../types";
 
@@ -23,7 +24,14 @@ interface EditRow {
  * (they can view the breakup on Payroll).
  */
 export function ReimbursementNotes() {
+  // Same cycle the Payroll tab opens on, for the same reason: the calendar
+  // rolls over on the 11th whether or not the closing cycle was paid, and a
+  // notepad that jumps to an empty next month the morning payroll comes due is
+  // a notepad you can't finish. The server holds the roll-over until everyone
+  // in the due cycle is marked paid — see useActiveCycle.
+  const activeCycle = useActiveCycle();
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
+  const [ready, setReady] = useState(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -33,7 +41,11 @@ export function ReimbursementNotes() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
 
-  const months = useMemo(() => recentMonths(12), []);
+  // Pay cycles, not calendar months, and always including whichever one is
+  // selected. recentMonths() counts back from the calendar month, so from the
+  // 11th onwards it never contained this picker's own value — the select went
+  // blank and the cycle being logged against became unreachable.
+  const periods = useMemo(() => recentPeriods(12, period), [period]);
 
   const load = useCallback(() => {
     Promise.all([
@@ -50,8 +62,24 @@ export function ReimbursementNotes() {
   }, [period]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!activeCycle || ready) return;
+    setPeriod(activeCycle.period);
+    setReady(true);
+  }, [activeCycle, ready]);
+
+  useEffect(() => {
+    if (ready) load();
+  }, [load, ready]);
+
+  /**
+   * Picking a cycle by hand also counts as settling the period: a choice made
+   * in the moment before the active cycle resolves must win, not be seeded over
+   * a beat later.
+   */
+  function pickPeriod(value: string) {
+    setPeriod(value);
+    setReady(true);
+  }
 
   function selectEmployee(id: number) {
     setSelectedId(id);
@@ -108,16 +136,32 @@ export function ReimbursementNotes() {
     <Card
       title="Reimbursement notes"
       actions={
-        <select value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }}>
-          {months.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
+        <select value={period} onChange={(e) => pickPeriod(e.target.value)} style={{ width: "auto" }}>
+          {periods.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
             </option>
           ))}
         </select>
       }
     >
       {error && <p className="error-text">{error}</p>}
+
+      {/* Says why the notepad opened on a cycle the calendar has already moved
+          past, so the hold reads as deliberate rather than as a stuck picker. */}
+      {activeCycle?.held && period === activeCycle.period && (
+        <div className="cycle-hold">
+          <div>
+            <strong>Still on the {cycleLabel(period)} cycle</strong>
+            <span className="muted">
+              {" · payroll hasn't rolled over yet — this cycle's dues aren't all marked paid, so notes"}
+              {" logged here still reach the payslips for it."}
+            </span>
+          </div>
+          <Button onClick={() => pickPeriod(activeCycle.calendarPeriod)}>Open current cycle</Button>
+        </div>
+      )}
+
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
         Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Payroll reimburses{" "}
         <b>50%</b> of the total you enter by default, and shows this breakup in the Payroll reimbursements

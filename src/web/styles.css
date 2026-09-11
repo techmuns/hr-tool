@@ -1130,6 +1130,23 @@ thead .hm-name {
   font-size: 13px;
 }
 
+/* Shown when payroll is holding an already-due cycle open because someone in
+   it isn't marked paid. Same shape as .payroll-bar, tinted so a cycle that
+   isn't the calendar's own reads as a deliberate hold at a glance. */
+.cycle-hold {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--leave);
+  border-radius: var(--radius);
+  background: var(--leave-soft);
+  font-size: 13px;
+}
+
 .payroll-result {
   margin-bottom: 12px;
   font-size: 13px;

@@ -8,6 +8,7 @@ import { formatINR } from "../money";
 import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate, periodForDate } from "../../worker/payslip";
+import { useActiveCycle } from "../hooks/useActiveCycle";
 import { AdjustmentsSection } from "./Adjustments";
 import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
 
@@ -110,11 +111,19 @@ interface EmailResult {
  * table never lags behind the thing that changed it.
  */
 export function Payroll() {
-  // Default to the ACTIVE billing cycle, not the calendar month: cycles run
-  // 11th-to-10th and are paid on the 11th, so once the 11th passes the current
-  // cycle is next month's period (a fresh, zeroed one) — which is what should
-  // show, rather than the just-paid cycle frozen as "dues paid".
+  // Which cycle to open on. The calendar can't answer this alone: cycles are
+  // paid on the 11th, so from the 11th onwards periodForDate() names the next
+  // period and this tab used to jump straight to a fresh, zeroed cycle — on the
+  // very morning the last one came due, paid or not. The server decides
+  // instead, holding an already-due cycle open until everyone in it is marked
+  // paid; `activeCycle` is that answer.
+  //
+  // The calendar's guess still seeds the state so the month input is never
+  // blank, but nothing loads until `ready` says the real answer has landed —
+  // otherwise the tab would fetch the wrong cycle and then visibly swap.
+  const activeCycle = useActiveCycle();
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
+  const [ready, setReady] = useState(false);
   const [rows, setRows] = useState<AdminPayrollRow[]>([]);
   const [adjustments, setAdjustments] = useState<CycleAdjustments | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,6 +151,9 @@ export function Payroll() {
    * the adjustments response reports, so they run in parallel.
    */
   function load(opts: { silent?: boolean; keepSelection?: boolean } = {}) {
+    // Guards the Refresh button, which renders before the active cycle has
+    // resolved — clicking it early would load the calendar's guess.
+    if (!ready) return;
     if (!opts.silent) {
       setLoading(true);
       setError(null);
@@ -168,10 +180,20 @@ export function Payroll() {
       });
   }
 
+  // Seeds the period once, the first time the active cycle resolves. `ready`
+  // flips in the same commit, so the load effect below fires exactly once —
+  // with the right cycle — rather than loading the calendar's guess first.
   useEffect(() => {
+    if (!activeCycle || ready) return;
+    setPeriod(activeCycle.period);
+    setReady(true);
+  }, [activeCycle, ready]);
+
+  useEffect(() => {
+    if (!ready) return;
     setResult(null);
     load();
-  }, [period]);
+  }, [period, ready]);
 
   // Keep the cycle current on its own: once dues are marked paid and payslips
   // emailed, that paid/sent state should appear without anyone pressing Refresh
@@ -181,6 +203,7 @@ export function Payroll() {
   busyRef.current =
     loading || paidBusy || paidBusyId !== null || emailingIds.length > 0 || openBreakup !== null;
   useEffect(() => {
+    if (!ready) return;
     const tick = () => {
       if (!document.hidden && !busyRef.current) load({ silent: true, keepSelection: true });
     };
@@ -191,7 +214,7 @@ export function Payroll() {
       window.removeEventListener("focus", tick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period]);
+  }, [period, ready]);
 
   const paidCount = rows.filter((r) => r.paid_at).length;
   const allPaid = rows.length > 0 && paidCount === rows.length;
@@ -213,6 +236,16 @@ export function Payroll() {
     setSelected((prev) =>
       prev.size === mailable.length ? new Set() : new Set(mailable.map((r) => r.employee_id)),
     );
+  }
+
+  /**
+   * Picking a month by hand also counts as settling the period: if someone
+   * moves the picker in the moment before the active cycle resolves, that
+   * choice wins — the seed effect must not reach back and overwrite it.
+   */
+  function pickPeriod(value: string) {
+    setPeriod(value);
+    setReady(true);
   }
 
   async function removeFromPayroll(employeeId: number, name: string) {
@@ -296,8 +329,8 @@ export function Payroll() {
       title="Payroll"
       actions={
         <div style={{ display: "flex", gap: 8 }}>
-          <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }} />
-          <Button disabled={busy} onClick={() => load()} title="Re-read this cycle">
+          <input type="month" value={period} onChange={(e) => pickPeriod(e.target.value)} style={{ width: "auto" }} />
+          <Button disabled={busy || !ready} onClick={() => load()} title="Re-read this cycle">
             {loading ? "Refreshing…" : "Refresh"}
           </Button>
           <Button disabled={rows.length === 0} onClick={() => exportPayrollPdf(period, rows)}>
@@ -307,6 +340,41 @@ export function Payroll() {
       }
     >
       {error && <p className="error-text">{error}</p>}
+
+      {/* Why this tab is showing a cycle the calendar has already moved past.
+          Without it the hold would look like a bug on the 11th — the month you
+          expected, silently not the one you got.
+
+          The counts come from `rows`, not from the active-cycle response that
+          decided the hold: that was read once on mount, and marking someone
+          paid a moment ago must not leave this sentence insisting they haven't
+          been. Once the last one is marked, it says so and points at the
+          cycle that has just become the default. */}
+      {activeCycle?.held && period === activeCycle.period && rows.length > 0 && (
+        <div className="cycle-hold">
+          <div>
+            {allPaid ? (
+              <>
+                <strong>{cycleLabel(period)} is settled</strong>
+                <span className="muted">
+                  {` · everyone is marked paid, so ${cycleLabel(activeCycle.calendarPeriod)} is the cycle this tab opens on from now on.`}
+                </span>
+              </>
+            ) : (
+              <>
+                <strong>Still on the {cycleLabel(period)} cycle</strong>
+                <span className="muted">
+                  {` · ${rows.length - paidCount} of ${rows.length} ${
+                    rows.length - paidCount === 1 ? "person isn't" : "people aren't"
+                  } marked paid, so it hasn't rolled over.`}
+                  {` Mark the last one paid and ${cycleLabel(activeCycle.calendarPeriod)} becomes the default.`}
+                </span>
+              </>
+            )}
+          </div>
+          <Button onClick={() => pickPeriod(activeCycle.calendarPeriod)}>Open current cycle</Button>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="payroll-bar">
@@ -505,7 +573,7 @@ export function Payroll() {
           {rows.length === 0 && (
             <tr>
               <td colSpan={12} className="muted">
-                {loading ? "Loading…" : "Nobody is on payroll for this period."}
+                {loading || !ready ? "Loading…" : "Nobody is on payroll for this period."}
               </td>
             </tr>
           )}
