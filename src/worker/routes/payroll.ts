@@ -3,7 +3,7 @@ import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payslipHtml, payslipSubject, payCycle } from "../payslip";
+import { payslipHtml, payslipSubject, payCycle, periodForDate } from "../payslip";
 import { syncPayroll } from "../payrollCalc";
 import type { AdminPayrollRow } from "../types";
 
@@ -56,6 +56,63 @@ app.get("/admin/payroll", async (c) => {
     .all<AdminPayrollRow>();
 
   return c.json(rows.results);
+});
+
+/**
+ * Which cycle the payroll screens should open on.
+ *
+ * The calendar alone used to decide this: cycles are paid on the 11th, so from
+ * the 11th onwards periodForDate() names the next period and every screen
+ * jumped to a fresh, zeroed cycle — whether or not the one that had just closed
+ * was actually paid out. That put a month picker between the founder and an
+ * unsettled payroll on the very day it came due, and took the reimbursement
+ * notepad along with it.
+ *
+ * So the roll-over is earned rather than automatic: while an already-due cycle
+ * still has anyone not marked paid, that cycle stays the active one. Marking
+ * the last person paid is what opens the next one.
+ *
+ * Two exclusions keep the hold from becoming a trap:
+ *  - Only periods BEFORE the calendar's own can hold. The cycle currently
+ *    accruing is unpaid by definition — it isn't due yet — and must not pin
+ *    itself in place forever.
+ *  - Archived people are skipped, exactly as the payroll list skips them. Their
+ *    rows can never be marked paid from the UI, so counting them would hold a
+ *    cycle open with no way to release it.
+ *
+ * This only picks the DEFAULT period. The month picker still moves freely, and
+ * the banner it drives offers one click back to the current cycle.
+ */
+app.get("/admin/payroll/active-period", async (c) => {
+  const calendarPeriod = periodForDate(new Date().toISOString().slice(0, 10));
+
+  // Oldest first: with two cycles outstanding, the older debt is the one that
+  // should be staring at you.
+  const held = await c.env.DB.prepare(
+    `SELECT p.period AS period,
+            COUNT(*) AS total,
+            SUM(CASE WHEN p.paid_at IS NULL THEN 1 ELSE 0 END) AS unpaid
+       FROM payroll p
+       JOIN employees e ON e.id = p.employee_id
+      WHERE e.archived = 0 AND p.period < ?
+      GROUP BY p.period
+     HAVING SUM(CASE WHEN p.paid_at IS NULL THEN 1 ELSE 0 END) > 0
+      ORDER BY p.period ASC
+      LIMIT 1`
+  )
+    .bind(calendarPeriod)
+    .first<{ period: string; total: number; unpaid: number }>();
+
+  if (!held) {
+    return c.json({ period: calendarPeriod, calendarPeriod, held: false, unpaid: 0, total: 0 });
+  }
+  return c.json({
+    period: held.period,
+    calendarPeriod,
+    held: true,
+    unpaid: held.unpaid,
+    total: held.total,
+  });
 });
 
 function safeParseEntries(json: string): { label: string; amount: number }[] {
