@@ -197,6 +197,22 @@ export function Payroll() {
   const allPaid = rows.length > 0 && paidCount === rows.length;
   const paidOn = rows.find((r) => r.paid_at)?.paid_at ?? null;
   const mailable = useMemo(() => rows.filter((r) => r.employee_email), [rows]);
+  // Column sums for the total row. The money columns are what matter here
+  // (base, reimbursements, deductions, net pay); per-person day counts aren't
+  // meaningful to add up, so the total row leaves those cells blank.
+  const totals = useMemo(
+    () =>
+      rows.reduce(
+        (acc, r) => ({
+          base_salary: acc.base_salary + r.base_salary,
+          reimbursements: acc.reimbursements + r.reimbursements,
+          deductions: acc.deductions + r.deductions,
+          net_pay: acc.net_pay + r.net_pay,
+        }),
+        { base_salary: 0, reimbursements: 0, deductions: 0, net_pay: 0 },
+      ),
+    [rows],
+  );
   const selectedCount = rows.filter((r) => selected.has(r.employee_id)).length;
   const pendingCount = adjustments?.pending.length ?? 0;
 
@@ -510,6 +526,34 @@ export function Payroll() {
             </tr>
           )}
         </tbody>
+        {rows.length > 0 && (
+          <tfoot>
+            <tr className="payroll-total-row">
+              <td colSpan={2}>
+                <strong>Total</strong>{" "}
+                <span className="muted">
+                  ({rows.length} {rows.length === 1 ? "person" : "people"})
+                </span>
+              </td>
+              <td>
+                <strong>{formatINR(totals.base_salary)}</strong>
+              </td>
+              <td>
+                <strong>{formatINR(totals.reimbursements)}</strong>
+              </td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td>
+                <strong>{formatINR(totals.deductions)}</strong>
+              </td>
+              <td>
+                <strong>{formatINR(totals.net_pay)}</strong>
+              </td>
+              <td colSpan={3}></td>
+            </tr>
+          </tfoot>
+        )}
       </table>
 
       <AdjustmentsSection
