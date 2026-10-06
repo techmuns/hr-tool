@@ -1130,6 +1130,13 @@ thead .hm-name {
   font-size: 13px;
 }
 
+/* The sum-of-all row pinned under the payslip table. A top border and a
+   faint tint set it apart from the per-person rows above it. */
+.payroll-total-row td {
+  border-top: 2px solid var(--border);
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+
 .payroll-result {
   margin-bottom: 12px;
   font-size: 13px;
