@@ -22,11 +22,11 @@ async function seedPayrollEmployee(salaryPaise: number): Promise<Employee> {
   return { ...emp, monthly_salary: salaryPaise };
 }
 
-async function approvedReimbursement(employeeId: number, amount: number): Promise<void> {
+async function approvedReimbursement(employeeId: number, amount: number, percent: 50 | 100 = 100): Promise<void> {
   await env.DB.prepare(
-    "INSERT INTO reimbursements (employee_id, amount, note, status, created_at) VALUES (?, ?, '', 'approved', ?)",
+    "INSERT INTO reimbursements (employee_id, amount, note, status, percent, created_at) VALUES (?, ?, '', 'approved', ?, ?)",
   )
-    .bind(employeeId, amount, `${cycle.start} 10:00:00`)
+    .bind(employeeId, amount, percent, `${cycle.start} 10:00:00`)
     .run();
 }
 
@@ -86,6 +86,16 @@ describe("reimbursement breakup + approved requests", () => {
       { label: "Mon", amount: 10_000, full: true },
       { label: "Tue", amount: 20_000, full: false },
     ]);
+
+    await syncPayroll(env.DB, PERIOD);
+
+    expect((await payrollRow(emp.id)).reimbursements).toBe(20_000);
+  });
+
+  it("applies each approved request's own percent (50% halves just that request)", async () => {
+    const emp = await seedPayrollEmployee(2_400_000);
+    await approvedReimbursement(emp.id, 10_000, 100); // full → 10000
+    await approvedReimbursement(emp.id, 20_000, 50); // half → 10000
 
     await syncPayroll(env.DB, PERIOD);
 

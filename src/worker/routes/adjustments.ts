@@ -150,6 +150,32 @@ app.patch("/admin/reimbursements/:id/status", async (c) => {
   return c.json(updated);
 });
 
+/**
+ * Set how much of a reimbursement request is paid — 50% or 100%. Independent of
+ * approval, so HR can dial a request down to half whether it's still pending or
+ * already approved; only approved rows actually reach pay, at this percent. The
+ * Payroll tab recomputes from this on its next read.
+ */
+app.patch("/admin/reimbursements/:id/percent", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "Invalid reimbursement id" }, 400);
+
+  const body = await c.req.json<{ percent?: number }>().catch(() => ({}) as { percent?: number });
+  if (body.percent !== 50 && body.percent !== 100) {
+    return c.json({ error: "percent must be 50 or 100" }, 400);
+  }
+
+  const existing = await c.env.DB.prepare("SELECT id FROM reimbursements WHERE id = ?").bind(id).first();
+  if (!existing) return c.json({ error: "Reimbursement not found" }, 404);
+
+  await c.env.DB.prepare("UPDATE reimbursements SET percent = ? WHERE id = ?").bind(body.percent, id).run();
+
+  const updated = await c.env.DB.prepare(`${REIMBURSEMENT_SELECT} WHERE r.id = ?`)
+    .bind(id)
+    .first<ReimbursementWithName>();
+  return c.json(updated);
+});
+
 app.post("/admin/deductions", async (c) => {
   const body = await c.req
     .json<{ employee_id?: number; period?: string; amount?: number; note?: string }>()

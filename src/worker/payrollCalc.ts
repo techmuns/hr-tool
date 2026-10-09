@@ -96,7 +96,9 @@ export async function approvedReimbursementsByEmployee(
 ): Promise<Map<number, number>> {
   const rows = await db
     .prepare(
-      `SELECT employee_id, COALESCE(SUM(amount), 0) AS total FROM reimbursements
+      // Each request pays at its own percent (default 100). Rounded per row
+      // before summing, so one request at 50% and another at 100% don't blend.
+      `SELECT employee_id, COALESCE(SUM(ROUND(amount * percent / 100.0)), 0) AS total FROM reimbursements
        WHERE status = 'approved' AND created_at >= ? AND created_at < ?
        GROUP BY employee_id`
     )

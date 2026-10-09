@@ -9,7 +9,7 @@ import { exportPayrollPdf } from "../pdf";
 import { exportPayslipPdf } from "../payslipPdf";
 import { cycleLabel, payDueDate, periodForDate } from "../../worker/payslip";
 import { AdjustmentsSection } from "./Adjustments";
-import type { AdminPayrollRow, BreakupEntry, CycleAdjustments } from "../types";
+import type { AdminPayrollRow, BreakupEntry, CycleAdjustments, ReimbursementWithName } from "../types";
 
 function parseEntries(json: string | null): BreakupEntry[] {
   if (!json) return [];
@@ -21,36 +21,37 @@ function parseEntries(json: string | null): BreakupEntry[] {
   }
 }
 
+const breakupLinePercent = (e: BreakupEntry, legacyFull: boolean): number =>
+  e.percent === 100
+    ? 100
+    : e.percent === 50
+      ? 50
+      : e.full === true
+        ? 100
+        : e.full === false
+          ? 50
+          : legacyFull
+            ? 100
+            : 50;
+
 /**
- * The daily reimbursement breakup HR logged, shown when the reimbursements
- * total is clicked. Read-only here (HR edits it in the Reimb. Notes tab). Each
- * line is reimbursed at its own 50% / 100% rate; the per-line rate and the
- * reimbursed sum are spelled out below. That reimbursed sum is added to any
- * approved reimbursement requests to make the payroll figure above.
+ * Everything that makes up a person's reimbursement figure for the cycle, shown
+ * when the total is clicked: every logged daily-breakup line and every approved
+ * reimbursement request, each with its own 50% / 100% rate, and the grand total
+ * — which matches the figure in the cell. Read-only; HR edits breakup lines in
+ * the Reimb. Notes tab and request rates in the Adjustments section below.
  */
-function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () => void }) {
+function BreakupDropdown({
+  row,
+  requests,
+  onClose,
+}: {
+  row: AdminPayrollRow;
+  requests: ReimbursementWithName[];
+  onClose: () => void;
+}) {
   const entries = parseEntries(row.reimbursement_breakup_entries);
   const legacyFull = row.reimbursement_breakup_full === 1;
-  const linePercent = (e: BreakupEntry): number =>
-    e.percent === 100
-      ? 100
-      : e.percent === 50
-        ? 50
-        : e.full === true
-          ? 100
-          : e.full === false
-            ? 50
-            : legacyFull
-              ? 100
-              : 50;
-  const total = row.reimbursement_breakup_total ?? 0;
-  const reimbursed = row.reimbursement_breakup_reimbursed ?? 0;
-  // The payroll cell is the breakup reimbursement PLUS approved reimbursement
-  // requests (the two are added, not either/or). Surface the approved portion so
-  // the dropdown reconciles to the figure in the cell instead of only explaining
-  // the breakup slice of it.
-  const grandTotal = row.reimbursements;
-  const approvedRequests = Math.max(0, grandTotal - reimbursed);
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={onClose} />
@@ -61,7 +62,7 @@ function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () =
           top: "100%",
           left: 0,
           marginTop: 4,
-          minWidth: 250,
+          minWidth: 280,
           background: "var(--surface)",
           border: "1px solid var(--border)",
           borderRadius: 8,
@@ -71,22 +72,31 @@ function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () =
           whiteSpace: "normal",
         }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Daily reimbursement breakup</div>
+        <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Reimbursement breakdown</div>
         <table style={{ width: "100%", fontSize: 13 }}>
           <tbody>
             {entries.map((e, i) => (
-              <tr key={i}>
+              <tr key={`b${i}`}>
                 <td style={{ padding: "2px 0" }}>{e.label || <span className="muted">—</span>}</td>
                 <td style={{ padding: "2px 8px", textAlign: "right" }} className="muted">
-                  {linePercent(e)}%
+                  {breakupLinePercent(e, legacyFull)}%
                 </td>
                 <td style={{ padding: "2px 0", textAlign: "right" }}>{formatINR(e.amount)}</td>
               </tr>
             ))}
-            {entries.length === 0 && (
+            {requests.map((r) => (
+              <tr key={`r${r.id}`}>
+                <td style={{ padding: "2px 0" }}>{r.note?.trim() || <span className="muted">Reimbursement</span>}</td>
+                <td style={{ padding: "2px 8px", textAlign: "right" }} className="muted">
+                  {r.percent === 50 ? 50 : 100}%
+                </td>
+                <td style={{ padding: "2px 0", textAlign: "right" }}>{formatINR(r.amount)}</td>
+              </tr>
+            ))}
+            {entries.length === 0 && requests.length === 0 && (
               <tr>
                 <td className="muted" colSpan={3}>
-                  No entries logged.
+                  Nothing logged.
                 </td>
               </tr>
             )}
@@ -94,40 +104,12 @@ function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () =
           <tfoot>
             <tr style={{ borderTop: "1px solid var(--border)" }}>
               <td style={{ padding: "4px 0" }} colSpan={2}>
-                Total logged
+                Total reimbursed
               </td>
               <td style={{ padding: "4px 0", textAlign: "right" }}>
-                <b>{formatINR(total)}</b>
+                <b>{formatINR(row.reimbursements)}</b>
               </td>
             </tr>
-            <tr>
-              <td style={{ padding: "2px 0" }} className="muted" colSpan={2}>
-                Reimbursed (per line)
-              </td>
-              <td style={{ padding: "2px 0", textAlign: "right" }} className="muted">
-                {formatINR(reimbursed)}
-              </td>
-            </tr>
-            {approvedRequests > 0 && (
-              <tr>
-                <td style={{ padding: "2px 0" }} className="muted" colSpan={2}>
-                  Approved requests
-                </td>
-                <td style={{ padding: "2px 0", textAlign: "right" }} className="muted">
-                  {formatINR(approvedRequests)}
-                </td>
-              </tr>
-            )}
-            {approvedRequests > 0 && (
-              <tr style={{ borderTop: "1px solid var(--border)" }}>
-                <td style={{ padding: "4px 0" }} colSpan={2}>
-                  Total reimbursed
-                </td>
-                <td style={{ padding: "4px 0", textAlign: "right" }}>
-                  <b>{formatINR(grandTotal)}</b>
-                </td>
-              </tr>
-            )}
           </tfoot>
         </table>
       </div>
@@ -244,6 +226,20 @@ export function Payroll() {
   const mailable = useMemo(() => rows.filter((r) => r.employee_email), [rows]);
   const selectedCount = rows.filter((r) => selected.has(r.employee_id)).length;
   const pendingCount = adjustments?.pending.length ?? 0;
+
+  // Approved reimbursement requests this cycle, grouped by employee, so each
+  // payroll row's dropdown can itemise them by name alongside the daily breakup.
+  // Same window and status the payroll figure is summed from, so they reconcile.
+  const approvedByEmployee = useMemo(() => {
+    const m = new Map<number, ReimbursementWithName[]>();
+    for (const r of adjustments?.reimbursements ?? []) {
+      if (r.status !== "approved") continue;
+      const list = m.get(r.employee_id) ?? [];
+      list.push(r);
+      m.set(r.employee_id, list);
+    }
+    return m;
+  }, [adjustments]);
 
   function toggle(employeeId: number) {
     setSelected((prev) => {
@@ -450,18 +446,22 @@ export function Payroll() {
               </td>
               <td>{formatINR(row.base_salary)}</td>
               <td>
-                {row.reimbursement_breakup_entries ? (
+                {row.reimbursement_breakup_entries || (approvedByEmployee.get(row.employee_id)?.length ?? 0) > 0 ? (
                   <span style={{ position: "relative", display: "inline-block" }}>
                     <button
                       type="button"
                       className="link-btn"
-                      title="View HR's daily breakup (each line reimbursed at its own 50% / 100%)"
+                      title="View the reimbursement breakdown (each line at its own 50% / 100%)"
                       onClick={() => setOpenBreakup(openBreakup === row.employee_id ? null : row.employee_id)}
                     >
                       {formatINR(row.reimbursements)} ▾
                     </button>
                     {openBreakup === row.employee_id && (
-                      <BreakupDropdown row={row} onClose={() => setOpenBreakup(null)} />
+                      <BreakupDropdown
+                        row={row}
+                        requests={approvedByEmployee.get(row.employee_id) ?? []}
+                        onClose={() => setOpenBreakup(null)}
+                      />
                     )}
                   </span>
                 ) : (
