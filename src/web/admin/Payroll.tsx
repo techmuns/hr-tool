@@ -31,7 +31,18 @@ function parseEntries(json: string | null): BreakupEntry[] {
 function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () => void }) {
   const entries = parseEntries(row.reimbursement_breakup_entries);
   const legacyFull = row.reimbursement_breakup_full === 1;
-  const linePercent = (e: BreakupEntry): number => (e.percent === 100 ? 100 : e.percent === 50 ? 50 : legacyFull ? 100 : 50);
+  const linePercent = (e: BreakupEntry): number =>
+    e.percent === 100
+      ? 100
+      : e.percent === 50
+        ? 50
+        : e.full === true
+          ? 100
+          : e.full === false
+            ? 50
+            : legacyFull
+              ? 100
+              : 50;
   const total = row.reimbursement_breakup_total ?? 0;
   const reimbursed = row.reimbursement_breakup_reimbursed ?? 0;
   return (

@@ -19,6 +19,43 @@ import type { Employee } from "./types";
 export const WORKING_DAYS_PER_MONTH = 24;
 
 /**
+ * The share of one breakup line that is reimbursed, 50 or 100. HR picks it per
+ * line and it is stored as `percent` inside the entry. Two older shapes are read
+ * for backward compatibility so nothing already logged changes meaning:
+ *   - a per-line `full` boolean (last month's format): true → 100, false → 50;
+ *   - neither present → the whole-breakup `full_reimbursement` flag.
+ */
+function entryPercent(entry: { percent?: unknown; full?: unknown }, fullReimbursement: boolean): number {
+  if (entry.percent === 100) return 100;
+  if (entry.percent === 50) return 50;
+  if (entry.full === true) return 100;
+  if (entry.full === false) return 50;
+  return fullReimbursement ? 100 : 50;
+}
+
+/**
+ * Paise a breakup actually reimburses: each logged line taken at its own
+ * percent, rounded per line (so a 100% line and a 50% line don't blend into one
+ * rate on the grand total). Computed straight from the stored `entries` JSON —
+ * there is no separate stored figure to keep in sync. A malformed/empty JSON
+ * reimburses nothing.
+ */
+export function reimbursedFromEntries(entriesJson: string | null | undefined, fullReimbursement: boolean): number {
+  if (!entriesJson) return 0;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(entriesJson);
+  } catch {
+    return 0;
+  }
+  if (!Array.isArray(parsed)) return 0;
+  return parsed.reduce((sum: number, e) => {
+    const amount = Number.isFinite(e?.amount) ? Math.max(0, Math.round(e.amount)) : 0;
+    return sum + Math.round((amount * entryPercent(e ?? {}, fullReimbursement)) / 100);
+  }, 0);
+}
+
+/**
  * Unpaid leave days falling inside the cycle, per employee. Leave is stored as
  * date ranges, so each one is expanded to business days and clipped to the
  * cycle — a range straddling the 10th only counts on the side it lands.
@@ -151,19 +188,21 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
     unpaidLeaveDaysByEmployee(db, cycle),
     approvedReimbursementsByEmployee(db, cycle),
     manualDeductionsByEmployee(db, period),
-    db.prepare("SELECT employee_id, reimbursed_total FROM reimbursement_breakups WHERE period = ?")
+    db.prepare("SELECT employee_id, entries, full_reimbursement FROM reimbursement_breakups WHERE period = ?")
       .bind(period)
-      .all<{ employee_id: number; reimbursed_total: number }>(),
+      .all<{ employee_id: number; entries: string; full_reimbursement: number }>(),
   ]);
 
   // HR's logged reimbursement breakup and the approved-request queue are two
   // separate sources of reimbursement, so they ADD rather than one overriding
   // the other (approving a request below Payroll and logging a note in the
-  // Reimb. Notes tab both count). `reimbursed_total` is the breakup already
-  // taken at each line's own 50% / 100% — the per-line percentage lives in the
-  // entries JSON and is applied on save, so payroll never has to re-derive it.
+  // Reimb. Notes tab both count). The breakup's contribution is each logged line
+  // taken at its own 50% / 100%, computed from the entries JSON.
   const breakupReimbursed = new Map(
-    (breakupRows.results ?? []).map((r) => [r.employee_id, r.reimbursed_total]),
+    (breakupRows.results ?? []).map((r) => [
+      r.employee_id,
+      reimbursedFromEntries(r.entries, r.full_reimbursement === 1),
+    ]),
   );
 
   const upsert = db.prepare(

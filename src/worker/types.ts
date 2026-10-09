@@ -250,7 +250,11 @@ export interface AdminPayrollRow extends PayrollWithName {
    */
   reimbursement_breakup_total: number | null;
   reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
-  /** Paise actually reimbursed from the breakup, after each line's percent. */
+  /**
+   * Paise actually reimbursed from the breakup, after each line's percent.
+   * Derived from the entries by the server (not a stored column), null when
+   * there is no breakup.
+   */
   reimbursement_breakup_reimbursed: number | null;
   /** 1 when every line of this breakup pays out in full (legacy; kept for compat). */
   reimbursement_breakup_full: number | null;
@@ -267,6 +271,8 @@ export interface BreakupEntry {
   label: string;
   amount: number;
   percent?: number;
+  /** Last month's per-line shape: true → 100%, false → 50%. Read when `percent` is absent. */
+  full?: boolean;
 }
 
 /** HR's reimbursement notepad for one employee in one pay cycle. */
@@ -276,7 +282,10 @@ export interface ReimbursementBreakup {
   entries: BreakupEntry[];
   /** Gross sum of every line's amount, in paise. */
   total: number;
-  /** Paise actually reimbursed, i.e. each line's amount taken at its percent. */
+  /**
+   * Paise actually reimbursed, i.e. each line's amount taken at its percent.
+   * Computed by the server from the entries; not stored.
+   */
   reimbursed_total: number;
   /** Legacy whole-breakup flag; true only when every line is at 100%. */
   full_reimbursement: boolean;

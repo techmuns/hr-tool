@@ -4,7 +4,7 @@ import { requireAdmin, requireEmployee } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
 import { payslipHtml, payslipSubject, payCycle } from "../payslip";
-import { syncPayroll } from "../payrollCalc";
+import { syncPayroll, reimbursedFromEntries } from "../payrollCalc";
 import type { AdminPayrollRow } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -30,7 +30,6 @@ app.get("/admin/payroll", async (c) => {
             e.employment_type, e.date_of_joining, e.location, e.work_mode,
             rb.total AS reimbursement_breakup_total,
             rb.entries AS reimbursement_breakup_entries,
-            rb.reimbursed_total AS reimbursement_breakup_reimbursed,
             rb.full_reimbursement AS reimbursement_breakup_full,
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present'
@@ -56,7 +55,19 @@ app.get("/admin/payroll", async (c) => {
     .bind(cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, cycle.start, cycle.end, period)
     .all<AdminPayrollRow>();
 
-  return c.json(rows.results);
+  // The breakup's reimbursed figure (each line at its own percent) is derived
+  // from the entries JSON, not stored — so it needs no column and can't drift
+  // from what payroll actually paid. Null breakup → null, so the UI knows there
+  // is no breakup rather than showing a spurious zero.
+  const withReimbursed = (rows.results ?? []).map((r) => ({
+    ...r,
+    reimbursement_breakup_reimbursed:
+      r.reimbursement_breakup_entries == null
+        ? null
+        : reimbursedFromEntries(r.reimbursement_breakup_entries, r.reimbursement_breakup_full === 1),
+  }));
+
+  return c.json(withReimbursed);
 });
 
 /**
@@ -71,7 +82,7 @@ function cleanPercent(value: unknown): 50 | 100 | undefined {
   return undefined;
 }
 
-function safeParseEntries(json: string): { label: string; amount: number; percent?: number }[] {
+function safeParseEntries(json: string): { label: string; amount: number; percent?: number; full?: boolean }[] {
   try {
     const parsed = JSON.parse(json);
     if (!Array.isArray(parsed)) return [];
@@ -79,6 +90,8 @@ function safeParseEntries(json: string): { label: string; amount: number; percen
       label: typeof e?.label === "string" ? e.label : "",
       amount: Number.isFinite(e?.amount) ? Math.max(0, Math.round(e.amount)) : 0,
       percent: cleanPercent(e?.percent),
+      // Carried through so the editor can read last month's per-line shape.
+      ...(typeof e?.full === "boolean" ? { full: e.full } : {}),
     }));
   } catch {
     return [];
@@ -102,7 +115,7 @@ app.get("/admin/reimbursement-breakup", async (c) => {
   if (!period || !PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   const rows = await c.env.DB.prepare(
-    "SELECT employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at FROM reimbursement_breakups WHERE period = ?",
+    "SELECT employee_id, period, entries, total, full_reimbursement, updated_at FROM reimbursement_breakups WHERE period = ?",
   )
     .bind(period)
     .all<{
@@ -110,7 +123,6 @@ app.get("/admin/reimbursement-breakup", async (c) => {
       period: string;
       entries: string;
       total: number;
-      reimbursed_total: number;
       full_reimbursement: number;
       updated_at: string;
     }>();
@@ -121,7 +133,8 @@ app.get("/admin/reimbursement-breakup", async (c) => {
       period: r.period,
       entries: safeParseEntries(r.entries),
       total: r.total,
-      reimbursed_total: r.reimbursed_total,
+      // Derived from entries, not stored — each line at its own percent.
+      reimbursed_total: reimbursedFromEntries(r.entries, r.full_reimbursement === 1),
       full_reimbursement: r.full_reimbursement === 1,
       updated_at: r.updated_at,
     })),
@@ -169,8 +182,10 @@ app.put("/admin/reimbursement-breakup", async (c) => {
   // other to a blended rate.
   const total = entries.reduce((sum, e) => sum + e.amount, 0);
   const reimbursedTotal = entries.reduce((sum, e) => sum + Math.round((e.amount * e.percent) / 100), 0);
-  // Legacy column: true only when every logged line is at 100%. Kept so any
-  // old reader still makes sense; the per-line percents are the real source.
+  // `full_reimbursement` is the pre-existing whole-breakup flag; keep it in step
+  // (true only when every line is at 100%) so the legacy column stays meaningful
+  // and the per-line percents remain the real source. The reimbursed figure is
+  // NOT stored — it's derived from the entries' percents wherever it's needed.
   const fullReimbursement = entries.length > 0 && entries.every((e) => e.percent === 100);
 
   if (entries.length === 0) {
@@ -181,16 +196,19 @@ app.put("/admin/reimbursement-breakup", async (c) => {
       .bind(employeeId, period)
       .run();
   } else {
+    // Only columns that exist on every database are written. The per-line
+    // percent lives inside `entries`; the reimbursed figure is derived, never
+    // stored (older databases carry stray reimbursed_* columns from a reverted
+    // feature — left untouched and unused rather than depended on here).
     await c.env.DB.prepare(
-      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, full_reimbursement, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
        ON CONFLICT (employee_id, period)
        DO UPDATE SET entries = excluded.entries, total = excluded.total,
-                     reimbursed_total = excluded.reimbursed_total,
                      full_reimbursement = excluded.full_reimbursement,
                      updated_at = datetime('now'), updated_by = excluded.updated_by`,
     )
-      .bind(employeeId, period, JSON.stringify(entries), total, reimbursedTotal, fullReimbursement ? 1 : 0, editor.id)
+      .bind(employeeId, period, JSON.stringify(entries), total, fullReimbursement ? 1 : 0, editor.id)
       .run();
   }
 

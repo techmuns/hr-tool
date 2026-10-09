@@ -59,12 +59,15 @@ export function ReimbursementNotes() {
     load();
   }, [load]);
 
-  // A line saved before per-line percentages existed carries no `percent`; read
-  // it as the breakup's old whole-cycle flag said (100% when it was on, else 50%)
-  // so an untouched breakup keeps paying exactly what it paid before.
+  // A line saved before per-line percentages existed carries no `percent`. Read
+  // last month's per-line `full` boolean if present (true → 100%, false → 50%),
+  // else the breakup's old whole-cycle flag, so an untouched breakup keeps
+  // paying exactly what it paid before until HR edits it.
   function entryPercent(e: BreakupEntry, legacyFull: boolean): 50 | 100 {
     if (e.percent === 100) return 100;
     if (e.percent === 50) return 50;
+    if (e.full === true) return 100;
+    if (e.full === false) return 50;
     return legacyFull ? 100 : 50;
   }
 

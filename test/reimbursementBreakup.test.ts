@@ -32,15 +32,15 @@ async function approvedReimbursement(employeeId: number, amount: number): Promis
 
 async function logBreakup(
   employeeId: number,
-  entries: { label: string; amount: number; percent: number }[],
+  entries: { label: string; amount: number; percent?: number; full?: boolean }[],
+  fullReimbursement = false,
 ): Promise<void> {
   const total = entries.reduce((s, e) => s + e.amount, 0);
-  const reimbursed = entries.reduce((s, e) => s + Math.round((e.amount * e.percent) / 100), 0);
   await env.DB.prepare(
-    `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, reimbursed_total, full_reimbursement)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, full_reimbursement)
+     VALUES (?, ?, ?, ?, ?)`,
   )
-    .bind(employeeId, PERIOD, JSON.stringify(entries), total, reimbursed, entries.every((e) => e.percent === 100) ? 1 : 0)
+    .bind(employeeId, PERIOD, JSON.stringify(entries), total, fullReimbursement ? 1 : 0)
     .run();
 }
 
@@ -77,6 +77,19 @@ describe("reimbursement breakup + approved requests", () => {
 
     // The whole line is at 100%, so all ₹300 reaches pay - not ₹150.
     expect((await payrollRow(emp.id)).reimbursements).toBe(30_000);
+  });
+
+  it("reads last month's per-line `full` boolean shape (true=100%, false=50%)", async () => {
+    const emp = await seedPayrollEmployee(2_400_000);
+    // No `percent` — the old format. ₹100 full + ₹200 half = 10000 + 10000.
+    await logBreakup(emp.id, [
+      { label: "Mon", amount: 10_000, full: true },
+      { label: "Tue", amount: 20_000, full: false },
+    ]);
+
+    await syncPayroll(env.DB, PERIOD);
+
+    expect((await payrollRow(emp.id)).reimbursements).toBe(20_000);
   });
 
   it("approved requests alone still flow through when no breakup exists", async () => {
