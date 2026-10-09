@@ -30,6 +30,7 @@ app.get("/admin/payroll", async (c) => {
             e.employment_type, e.date_of_joining, e.location, e.work_mode,
             rb.total AS reimbursement_breakup_total,
             rb.entries AS reimbursement_breakup_entries,
+            rb.reimbursed_total AS reimbursement_breakup_reimbursed,
             rb.full_reimbursement AS reimbursement_breakup_full,
             (SELECT COUNT(*) FROM attendance a
                WHERE a.employee_id = p.employee_id AND a.status = 'present'
@@ -58,10 +59,27 @@ app.get("/admin/payroll", async (c) => {
   return c.json(rows.results);
 });
 
-function safeParseEntries(json: string): { label: string; amount: number }[] {
+/**
+ * The share of a line that is reimbursed. Only 50 or 100 are offered; anything
+ * else (or missing, on a legacy line) comes back undefined so the caller can
+ * apply the right fallback — the client fills it from the breakup's old
+ * whole-cycle flag when editing.
+ */
+function cleanPercent(value: unknown): 50 | 100 | undefined {
+  if (value === 100) return 100;
+  if (value === 50) return 50;
+  return undefined;
+}
+
+function safeParseEntries(json: string): { label: string; amount: number; percent?: number }[] {
   try {
     const parsed = JSON.parse(json);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((e) => ({
+      label: typeof e?.label === "string" ? e.label : "",
+      amount: Number.isFinite(e?.amount) ? Math.max(0, Math.round(e.amount)) : 0,
+      percent: cleanPercent(e?.percent),
+    }));
   } catch {
     return [];
   }
@@ -70,9 +88,8 @@ function safeParseEntries(json: string): { label: string; amount: number }[] {
 interface BreakupBody {
   employee_id?: number;
   period?: string;
-  entries?: { label?: string; amount?: number }[];
-  /** Admin-only: pay the FULL logged total instead of the standard 50%. */
-  full_reimbursement?: boolean;
+  /** Each line's `percent` is 50 or 100 — the share of that line that is paid. */
+  entries?: { label?: string; amount?: number; percent?: number }[];
 }
 
 /**
@@ -85,7 +102,7 @@ app.get("/admin/reimbursement-breakup", async (c) => {
   if (!period || !PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
 
   const rows = await c.env.DB.prepare(
-    "SELECT employee_id, period, entries, total, full_reimbursement, updated_at FROM reimbursement_breakups WHERE period = ?",
+    "SELECT employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at FROM reimbursement_breakups WHERE period = ?",
   )
     .bind(period)
     .all<{
@@ -93,6 +110,7 @@ app.get("/admin/reimbursement-breakup", async (c) => {
       period: string;
       entries: string;
       total: number;
+      reimbursed_total: number;
       full_reimbursement: number;
       updated_at: string;
     }>();
@@ -103,6 +121,7 @@ app.get("/admin/reimbursement-breakup", async (c) => {
       period: r.period,
       entries: safeParseEntries(r.entries),
       total: r.total,
+      reimbursed_total: r.reimbursed_total,
       full_reimbursement: r.full_reimbursement === 1,
       updated_at: r.updated_at,
     })),
@@ -111,15 +130,16 @@ app.get("/admin/reimbursement-breakup", async (c) => {
 
 /**
  * Save an employee's reimbursement breakup for a cycle — HR ONLY (founders can
- * view it but not edit). Stores the notepad lines + their total; payroll then
- * reimburses half that total, or the full total when `full_reimbursement` is
- * set (syncPayroll, run here so the figure updates at once). Amounts are in
- * paise.
+ * view it but not edit). Stores the notepad lines, each with its own 50% / 100%
+ * `percent`, the gross `total`, and the `reimbursed_total` (each line taken at
+ * its percent). Payroll adds `reimbursed_total` to any approved reimbursement
+ * requests (syncPayroll, run here so the figure updates at once). Amounts are
+ * in paise.
  *
- * `full_reimbursement` is gated the same as the rest of this endpoint — the
- * whole route group requires the admin role (see requireAdmin above), and only
- * HR tier can write here at all, so flipping a cycle to 100% is already an
- * admin-only action, same as everything else on this form.
+ * Writing here is gated the same as the rest of this endpoint — the whole route
+ * group requires the admin role (see requireAdmin above), and only HR tier can
+ * write at all, so this is already an admin-only action, same as everything
+ * else on this form.
  */
 app.put("/admin/reimbursement-breakup", async (c) => {
   const editor = c.get("employee");
@@ -132,15 +152,26 @@ app.put("/admin/reimbursement-breakup", async (c) => {
   const period = typeof body.period === "string" ? body.period : "";
   if (!Number.isInteger(employeeId)) return c.json({ error: "employee_id is required" }, 400);
   if (!PERIOD_RE.test(period)) return c.json({ error: "period (YYYY-MM) is required" }, 400);
-  const fullReimbursement = body.full_reimbursement === true;
 
+  // Each line carries its own 50 / 100 percent. A missing or odd value falls
+  // back to 50, the historical default, so a client that doesn't send one still
+  // behaves like the old half-reimbursement.
   const entries = (Array.isArray(body.entries) ? body.entries : [])
     .map((e) => ({
       label: typeof e.label === "string" ? e.label.slice(0, 200) : "",
       amount: Number.isFinite(e.amount) ? Math.max(0, Math.round(e.amount as number)) : 0,
+      percent: cleanPercent(e.percent) ?? 50,
     }))
     .filter((e) => e.label !== "" || e.amount > 0);
+  // Gross logged sum, and what actually reaches net pay once each line is taken
+  // at its own percent. Rounding per line (not on the grand total) is what lets
+  // one line sit at 100% while another stays at 50% without either dragging the
+  // other to a blended rate.
   const total = entries.reduce((sum, e) => sum + e.amount, 0);
+  const reimbursedTotal = entries.reduce((sum, e) => sum + Math.round((e.amount * e.percent) / 100), 0);
+  // Legacy column: true only when every logged line is at 100%. Kept so any
+  // old reader still makes sense; the per-line percents are the real source.
+  const fullReimbursement = entries.length > 0 && entries.every((e) => e.percent === 100);
 
   if (entries.length === 0) {
     // Cleared to nothing → drop the breakup entirely so payroll stops applying
@@ -151,23 +182,31 @@ app.put("/admin/reimbursement-breakup", async (c) => {
       .run();
   } else {
     await c.env.DB.prepare(
-      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, full_reimbursement, updated_at, updated_by)
-       VALUES (?, ?, ?, ?, ?, datetime('now'), ?)
+      `INSERT INTO reimbursement_breakups (employee_id, period, entries, total, reimbursed_total, full_reimbursement, updated_at, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
        ON CONFLICT (employee_id, period)
        DO UPDATE SET entries = excluded.entries, total = excluded.total,
+                     reimbursed_total = excluded.reimbursed_total,
                      full_reimbursement = excluded.full_reimbursement,
                      updated_at = datetime('now'), updated_by = excluded.updated_by`,
     )
-      .bind(employeeId, period, JSON.stringify(entries), total, fullReimbursement ? 1 : 0, editor.id)
+      .bind(employeeId, period, JSON.stringify(entries), total, reimbursedTotal, fullReimbursement ? 1 : 0, editor.id)
       .run();
   }
 
-  // Net pay reimburses half this total (or all of it, when full_reimbursement
-  // is set) — recompute so the Payroll tab reflects it immediately. No-op on a
-  // cycle already marked paid (those stay frozen).
+  // Net pay adds this reimbursed figure (each line at its own percent) on top
+  // of any approved reimbursement requests — recompute so the Payroll tab
+  // reflects it immediately. No-op on a cycle already marked paid (frozen).
   await syncPayroll(c.env.DB, period);
 
-  return c.json({ employee_id: employeeId, period, entries, total, full_reimbursement: fullReimbursement });
+  return c.json({
+    employee_id: employeeId,
+    period,
+    entries,
+    total,
+    reimbursed_total: reimbursedTotal,
+    full_reimbursement: fullReimbursement,
+  });
 });
 
 /**

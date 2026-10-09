@@ -10,17 +10,24 @@ import type { BreakupEntry, Employee, ReimbursementBreakup } from "../types";
 interface EditRow {
   label: string;
   amount: string; // rupees, as typed
+  percent: 50 | 100; // how much of THIS line is reimbursed
+}
+
+/** Reimbursed paise for one edit row: its amount taken at its own percent. */
+function rowReimbursed(r: EditRow): number {
+  const paise = Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100));
+  return Math.round((paise * r.percent) / 100);
 }
 
 /**
  * HR-only notepad for the daily reimbursement breakup. HR picks a cycle and a
- * person, writes labelled lines with amounts, and saves; payroll then reimburses
- * HALF the logged total by default and shows the breakup in the Payroll
- * reimbursements dropdown. The "100% instead of 50%" checkbox is an
- * admin-only override — it's part of this HR-only form, so only HR/founder
- * (role=admin) accounts can ever reach it; the backend re-checks tier === 'hr'
- * on save regardless of what the client sends. Founders don't see this tab
- * (they can view the breakup on Payroll).
+ * person, writes labelled lines with amounts, and saves. Each line is reimbursed
+ * at its OWN rate — 50% or 100% — chosen per line, so one day can pay in full
+ * while another pays half. Payroll ADDS this reimbursed total on top of any
+ * approved reimbursement requests (the two no longer override each other), and
+ * shows the breakup in the Payroll reimbursements dropdown. HR-only: the backend
+ * re-checks tier === 'hr' on save regardless of what the client sends. Founders
+ * don't see this tab (they can view the breakup on Payroll).
  */
 export function ReimbursementNotes() {
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
@@ -28,7 +35,6 @@ export function ReimbursementNotes() {
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [rows, setRows] = useState<EditRow[]>([]);
-  const [fullReimbursement, setFullReimbursement] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -53,6 +59,15 @@ export function ReimbursementNotes() {
     load();
   }, [load]);
 
+  // A line saved before per-line percentages existed carries no `percent`; read
+  // it as the breakup's old whole-cycle flag said (100% when it was on, else 50%)
+  // so an untouched breakup keeps paying exactly what it paid before.
+  function entryPercent(e: BreakupEntry, legacyFull: boolean): 50 | 100 {
+    if (e.percent === 100) return 100;
+    if (e.percent === 50) return 50;
+    return legacyFull ? 100 : 50;
+  }
+
   function selectEmployee(id: number) {
     setSelectedId(id);
     setStatus(null);
@@ -60,17 +75,25 @@ export function ReimbursementNotes() {
     const existing = breakups[id];
     setRows(
       existing && existing.entries.length
-        ? existing.entries.map((e) => ({ label: e.label, amount: (e.amount / 100).toFixed(2) }))
-        : [{ label: "", amount: "" }],
+        ? existing.entries.map((e) => ({
+            label: e.label,
+            amount: (e.amount / 100).toFixed(2),
+            percent: entryPercent(e, existing.full_reimbursement),
+          }))
+        : [{ label: "", amount: "", percent: 50 }],
     );
-    setFullReimbursement(existing?.full_reimbursement ?? false);
   }
 
-  function updateRow(i: number, field: keyof EditRow, value: string) {
-    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, [field]: value } : r)));
+  function updateRow(i: number, patch: Partial<EditRow>) {
+    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
+  }
+
+  function setAllPercent(percent: 50 | 100) {
+    setRows((rs) => rs.map((r) => ({ ...r, percent })));
   }
 
   const totalPaise = rows.reduce((s, r) => s + Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)), 0);
+  const reimbursedPaise = rows.reduce((s, r) => s + rowReimbursed(r), 0);
 
   async function save() {
     if (selectedId == null) return;
@@ -82,19 +105,16 @@ export function ReimbursementNotes() {
         .map((r) => ({
           label: r.label.trim(),
           amount: Math.max(0, Math.round((parseFloat(r.amount) || 0) * 100)),
+          percent: r.percent,
         }))
         .filter((e) => e.label !== "" || e.amount > 0);
       const saved = await api.put<ReimbursementBreakup>("/admin/reimbursement-breakup", {
         employee_id: selectedId,
         period,
         entries,
-        full_reimbursement: fullReimbursement,
       });
       setBreakups((m) => ({ ...m, [selectedId]: saved }));
-      const reimbursed = fullReimbursement ? totalPaise : Math.round(totalPaise / 2);
-      setStatus(
-        `Saved — reimbursing ${formatINR(reimbursed)} (${fullReimbursement ? "100%" : "50%"} of ${formatINR(totalPaise)}).`,
-      );
+      setStatus(`Saved — reimbursing ${formatINR(saved.reimbursed_total)} of ${formatINR(saved.total)} logged.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -119,9 +139,9 @@ export function ReimbursementNotes() {
     >
       {error && <p className="error-text">{error}</p>}
       <p className="muted" style={{ marginTop: 0, fontSize: 13 }}>
-        Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Payroll reimburses{" "}
-        <b>50%</b> of the total you enter by default, and shows this breakup in the Payroll reimbursements
-        dropdown. Admins can switch a cycle to reimburse the full amount instead.
+        Log the daily reimbursement breakup for the {cycleLabel(period)} cycle. Set each line to reimburse{" "}
+        <b>50%</b> or <b>100%</b> on its own — the amounts are added to any approved reimbursement requests and shown
+        in the Payroll reimbursements dropdown.
       </p>
 
       <div className="row">
@@ -146,19 +166,21 @@ export function ReimbursementNotes() {
 
       {selected && (
         <div style={{ marginTop: 12 }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
-            <input
-              type="checkbox"
-              checked={fullReimbursement}
-              onChange={(e) => setFullReimbursement(e.target.checked)}
-            />
-            Reimburse 100% instead of 50% (admin-only)
-          </label>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, fontSize: 13 }}>
+            <span className="muted">Set all lines to:</span>
+            <button type="button" className="link-btn" onClick={() => setAllPercent(50)}>
+              50%
+            </button>
+            <button type="button" className="link-btn" onClick={() => setAllPercent(100)}>
+              100%
+            </button>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Note / day</th>
-                <th style={{ width: 160 }}>Amount (INR)</th>
+                <th style={{ width: 140 }}>Amount (INR)</th>
+                <th style={{ width: 110 }}>Reimburse</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
@@ -170,7 +192,7 @@ export function ReimbursementNotes() {
                       type="text"
                       placeholder="e.g. Mon — client travel"
                       value={r.label}
-                      onChange={(e) => updateRow(i, "label", e.target.value)}
+                      onChange={(e) => updateRow(i, { label: e.target.value })}
                     />
                   </td>
                   <td>
@@ -180,8 +202,17 @@ export function ReimbursementNotes() {
                       min={0}
                       placeholder="0.00"
                       value={r.amount}
-                      onChange={(e) => updateRow(i, "amount", e.target.value)}
+                      onChange={(e) => updateRow(i, { amount: e.target.value })}
                     />
+                  </td>
+                  <td>
+                    <select
+                      value={r.percent}
+                      onChange={(e) => updateRow(i, { percent: Number(e.target.value) === 100 ? 100 : 50 })}
+                    >
+                      <option value={50}>50%</option>
+                      <option value={100}>100%</option>
+                    </select>
                   </td>
                   <td>
                     <button
@@ -199,19 +230,23 @@ export function ReimbursementNotes() {
             <tfoot>
               <tr>
                 <td>
-                  <button type="button" className="link-btn" onClick={() => setRows((rs) => [...rs, { label: "", amount: "" }])}>
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setRows((rs) => [...rs, { label: "", amount: "", percent: 50 }])}
+                  >
                     + Add line
                   </button>
                 </td>
                 <td style={{ textAlign: "right", fontWeight: 700 }}>{formatINR(totalPaise)}</td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
               <tr>
-                <td className="muted">Reimbursed ({fullReimbursement ? "100%" : "50%"})</td>
+                <td className="muted">Reimbursed (per line)</td>
                 <td className="muted" style={{ textAlign: "right" }}>
-                  {formatINR(fullReimbursement ? totalPaise : Math.round(totalPaise / 2))}
+                  {formatINR(reimbursedPaise)}
                 </td>
-                <td></td>
+                <td colSpan={2}></td>
               </tr>
             </tfoot>
           </table>

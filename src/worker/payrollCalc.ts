@@ -151,21 +151,19 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
     unpaidLeaveDaysByEmployee(db, cycle),
     approvedReimbursementsByEmployee(db, cycle),
     manualDeductionsByEmployee(db, period),
-    db.prepare("SELECT employee_id, total, full_reimbursement FROM reimbursement_breakups WHERE period = ?")
+    db.prepare("SELECT employee_id, reimbursed_total FROM reimbursement_breakups WHERE period = ?")
       .bind(period)
-      .all<{ employee_id: number; total: number; full_reimbursement: number }>(),
+      .all<{ employee_id: number; reimbursed_total: number }>(),
   ]);
 
-  // When HR has logged a reimbursement breakup for someone this cycle, payroll
-  // reimburses that notepad total and it OVERRIDES the approved-request sum.
-  // By default it's HALF the total; an admin can flip full_reimbursement to
-  // pay the FULL amount instead. Where there's no breakup, the approved
-  // requests stand as before.
-  const breakupAmount = new Map(
-    (breakupRows.results ?? []).map((r) => [
-      r.employee_id,
-      r.full_reimbursement ? r.total : Math.round(r.total / 2),
-    ]),
+  // HR's logged reimbursement breakup and the approved-request queue are two
+  // separate sources of reimbursement, so they ADD rather than one overriding
+  // the other (approving a request below Payroll and logging a note in the
+  // Reimb. Notes tab both count). `reimbursed_total` is the breakup already
+  // taken at each line's own 50% / 100% — the per-line percentage lives in the
+  // entries JSON and is applied on save, so payroll never has to re-derive it.
+  const breakupReimbursed = new Map(
+    (breakupRows.results ?? []).map((r) => [r.employee_id, r.reimbursed_total]),
   );
 
   const upsert = db.prepare(
@@ -188,9 +186,8 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
     const pay = computePay({
       monthlySalary: employee.monthly_salary,
       unpaidDays: unpaidLeaveDays.get(employee.id) ?? 0,
-      reimbursements: breakupAmount.has(employee.id)
-        ? (breakupAmount.get(employee.id) as number)
-        : approvedReimbursements.get(employee.id) ?? 0,
+      reimbursements:
+        (breakupReimbursed.get(employee.id) ?? 0) + (approvedReimbursements.get(employee.id) ?? 0),
       otherDeductions: manualDeductions.get(employee.id) ?? 0,
     });
     return upsert.bind(
