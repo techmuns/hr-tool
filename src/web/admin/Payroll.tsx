@@ -45,6 +45,12 @@ function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () =
               : 50;
   const total = row.reimbursement_breakup_total ?? 0;
   const reimbursed = row.reimbursement_breakup_reimbursed ?? 0;
+  // The payroll cell is the breakup reimbursement PLUS approved reimbursement
+  // requests (the two are added, not either/or). Surface the approved portion so
+  // the dropdown reconciles to the figure in the cell instead of only explaining
+  // the breakup slice of it.
+  const grandTotal = row.reimbursements;
+  const approvedRequests = Math.max(0, grandTotal - reimbursed);
   return (
     <>
       <div style={{ position: "fixed", inset: 0, zIndex: 40 }} onClick={onClose} />
@@ -102,6 +108,26 @@ function BreakupDropdown({ row, onClose }: { row: AdminPayrollRow; onClose: () =
                 {formatINR(reimbursed)}
               </td>
             </tr>
+            {approvedRequests > 0 && (
+              <tr>
+                <td style={{ padding: "2px 0" }} className="muted" colSpan={2}>
+                  Approved requests
+                </td>
+                <td style={{ padding: "2px 0", textAlign: "right" }} className="muted">
+                  {formatINR(approvedRequests)}
+                </td>
+              </tr>
+            )}
+            {approvedRequests > 0 && (
+              <tr style={{ borderTop: "1px solid var(--border)" }}>
+                <td style={{ padding: "4px 0" }} colSpan={2}>
+                  Total reimbursed
+                </td>
+                <td style={{ padding: "4px 0", textAlign: "right" }}>
+                  <b>{formatINR(grandTotal)}</b>
+                </td>
+              </tr>
+            )}
           </tfoot>
         </table>
       </div>
