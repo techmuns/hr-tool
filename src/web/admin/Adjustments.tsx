@@ -96,6 +96,20 @@ export function AdjustmentsSection({
     }
   }
 
+  /** Set a single request to 50% or 100%, approved or not. */
+  async function setPercent(id: number, percent: 50 | 100) {
+    setBusyId(id);
+    onError(null);
+    try {
+      await api.patch(`/admin/reimbursements/${id}/percent`, { percent });
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to update reimbursement");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   /**
    * File a reimbursement on someone's behalf. Goes to the same endpoint the
    * employee drawer uses, which marks it approved on the spot — HR entering it
@@ -254,6 +268,7 @@ export function AdjustmentsSection({
             <th>Employee</th>
             <th>Note</th>
             <th>Amount</th>
+            <th>Reimburse</th>
             {BILLS_ENABLED && <th>Bill</th>}
             <th>Reason (optional)</th>
             <th></th>
@@ -266,6 +281,17 @@ export function AdjustmentsSection({
               <td>{r.employee_name}</td>
               <td>{r.note || <span className="muted">—</span>}</td>
               <td>{formatINR(r.amount)}</td>
+              <td>
+                <select
+                  value={r.percent === 50 ? 50 : 100}
+                  disabled={rowBusy(r.id)}
+                  onChange={(e) => setPercent(r.id, Number(e.target.value) === 50 ? 50 : 100)}
+                  style={{ width: "auto" }}
+                >
+                  <option value={100}>100%</option>
+                  <option value={50}>50%</option>
+                </select>
+              </td>
               {BILLS_ENABLED && (
                 <td>
                   <BillLink reimbursement={r} />
@@ -302,7 +328,7 @@ export function AdjustmentsSection({
           ))}
           {pending.length === 0 && (
             <tr>
-              <td colSpan={BILLS_ENABLED ? 7 : 6} className="muted">
+              <td colSpan={BILLS_ENABLED ? 8 : 7} className="muted">
                 Nothing waiting on approval.
               </td>
             </tr>
@@ -318,6 +344,7 @@ export function AdjustmentsSection({
             <th>Employee</th>
             <th>Note</th>
             <th>Amount</th>
+            <th>Reimburse</th>
             <th>Status</th>
             <th>Decided by</th>
             <th></th>
@@ -333,6 +360,21 @@ export function AdjustmentsSection({
                 {r.decision_note && <div className="muted" style={{ fontSize: 12 }}>“{r.decision_note}”</div>}
               </td>
               <td>{formatINR(r.amount)}</td>
+              <td>
+                {r.status === "rejected" ? (
+                  <span className="muted">—</span>
+                ) : (
+                  <select
+                    value={r.percent === 50 ? 50 : 100}
+                    disabled={rowBusy(r.id)}
+                    onChange={(e) => setPercent(r.id, Number(e.target.value) === 50 ? 50 : 100)}
+                    style={{ width: "auto" }}
+                  >
+                    <option value={100}>100%</option>
+                    <option value={50}>50%</option>
+                  </select>
+                )}
+              </td>
               <td>
                 <Tag value={r.status} />
               </td>
@@ -355,7 +397,7 @@ export function AdjustmentsSection({
           ))}
           {decided.length === 0 && (
             <tr>
-              <td colSpan={7} className="muted">
+              <td colSpan={8} className="muted">
                 No reimbursements decided for this cycle.
               </td>
             </tr>

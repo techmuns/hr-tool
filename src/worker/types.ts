@@ -64,6 +64,8 @@ export interface Reimbursement {
   bill_size: number | null;
   /** Only 'approved' rows are counted into a cycle's pay. */
   status: ReimbursementStatus;
+  /** Share of this request that is paid — 50 or 100, set per request by HR. */
+  percent: number;
   /** When HR decided; null while still pending. */
   decided_at: string | null;
   decided_by: number | null;
