@@ -240,22 +240,39 @@ export interface AdminPayrollRow extends PayrollWithName {
   /** Days HR manually flagged work-from-home this cycle (nothing is inferred). */
   wfh_days: number;
   /**
-   * HR's manual reimbursement breakup for this cycle, if any. `reimbursements`
-   * above already reflects HALF of this total, or ALL of it when an admin has
-   * flipped `reimbursement_breakup_full` on; the raw total and entries are
-   * here so the Payroll tab can show the full breakdown in a dropdown. Null
-   * when HR hasn't entered one (approved requests stand).
+   * HR's manual reimbursement breakup for this cycle, if any. The breakup's
+   * contribution to `reimbursements` above is `reimbursement_breakup_reimbursed`
+   * — each line's amount taken at its own 50% / 100% — ADDED to any approved
+   * reimbursement requests. `reimbursement_breakup_total` is the gross logged
+   * sum and `..._entries` the raw lines (each with its `percent`), both here so
+   * the Payroll tab can show the breakdown in a dropdown. Null when HR hasn't
+   * entered a breakup (approved requests stand on their own).
    */
   reimbursement_breakup_total: number | null;
   reimbursement_breakup_entries: string | null; // raw JSON, parsed client-side
-  /** 1 when this breakup pays out in full instead of the standard 50%. */
+  /**
+   * Paise actually reimbursed from the breakup, after each line's percent.
+   * Derived from the entries by the server (not a stored column), null when
+   * there is no breakup.
+   */
+  reimbursement_breakup_reimbursed: number | null;
+  /** 1 when every line of this breakup pays out in full (legacy; kept for compat). */
   reimbursement_breakup_full: number | null;
 }
 
-/** One labelled line in HR's daily reimbursement notepad; amount in paise. */
+/**
+ * One labelled line in HR's daily reimbursement notepad; amount in paise.
+ * `percent` is how much of that line reaches net pay — 50 or 100, chosen per
+ * line. Absent on rows written before per-line percentages existed; read those
+ * as the cycle's old whole-breakup `full_reimbursement` flag (100 when on, else
+ * 50).
+ */
 export interface BreakupEntry {
   label: string;
   amount: number;
+  percent?: number;
+  /** Last month's per-line shape: true → 100%, false → 50%. Read when `percent` is absent. */
+  full?: boolean;
 }
 
 /** HR's reimbursement notepad for one employee in one pay cycle. */
@@ -263,8 +280,14 @@ export interface ReimbursementBreakup {
   employee_id: number;
   period: string;
   entries: BreakupEntry[];
+  /** Gross sum of every line's amount, in paise. */
   total: number;
-  /** Admin-only: pays out the FULL total instead of the standard 50%. */
+  /**
+   * Paise actually reimbursed, i.e. each line's amount taken at its percent.
+   * Computed by the server from the entries; not stored.
+   */
+  reimbursed_total: number;
+  /** Legacy whole-breakup flag; true only when every line is at 100%. */
   full_reimbursement: boolean;
   updated_at: string;
 }
