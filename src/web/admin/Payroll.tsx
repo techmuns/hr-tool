@@ -142,6 +142,12 @@ export function Payroll() {
   // cycle is next month's period (a fresh, zeroed one) — which is what should
   // show, rather than the just-paid cycle frozen as "dues paid".
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
+  // The server decides the landing cycle (it knows what's paid); until it
+  // answers we hold the first load so the tab doesn't flash the wrong month.
+  const [periodResolved, setPeriodResolved] = useState(false);
+  // Set once the user drives the month picker — after that, the server's
+  // suggestion must never yank them off the cycle they chose.
+  const userPickedPeriod = useRef(false);
   const [rows, setRows] = useState<AdminPayrollRow[]>([]);
   const [adjustments, setAdjustments] = useState<CycleAdjustments | null>(null);
   const [loading, setLoading] = useState(false);
@@ -195,10 +201,33 @@ export function Payroll() {
       });
   }
 
+  // Ask the server which cycle to open on: the active one, or the just-closed
+  // one while its dues are still unpaid (so the 11th doesn't skip past an
+  // unpaid month). Runs once, and only moves us if the user hasn't picked yet.
   useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ period: string }>("/admin/payroll/default-period")
+      .then((r) => {
+        if (!cancelled && !userPickedPeriod.current && r.period) setPeriod(r.period);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPeriodResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Wait for the landing cycle before the first load; after that, every month
+    // change (server-chosen or user-picked) reloads as normal.
+    if (!periodResolved) return;
     setResult(null);
     load();
-  }, [period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, periodResolved]);
 
   // Keep the cycle current on its own: once dues are marked paid and payslips
   // emailed, that paid/sent state should appear without anyone pressing Refresh
@@ -337,7 +366,15 @@ export function Payroll() {
       title="Payroll"
       actions={
         <div style={{ display: "flex", gap: 8 }}>
-          <input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }} />
+          <input
+            type="month"
+            value={period}
+            onChange={(e) => {
+              userPickedPeriod.current = true;
+              setPeriod(e.target.value);
+            }}
+            style={{ width: "auto" }}
+          />
           <Button disabled={busy} onClick={() => load()} title="Re-read this cycle">
             {loading ? "Refreshing…" : "Refresh"}
           </Button>

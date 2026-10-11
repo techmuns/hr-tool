@@ -50,12 +50,16 @@ app.get("/admin/adjustments", async (c) => {
     // month would strand it with nowhere in the UI to act on it.
     c.env.DB.prepare(`${REIMBURSEMENT_SELECT} WHERE r.status = 'pending' ORDER BY r.created_at ASC`)
       .all<ReimbursementWithName>(),
+    // Billed to this cycle by pinned `period`; a row from before periods were
+    // pinned (0039) falls back to its created_at window, so nothing decided in a
+    // past cycle shifts. Same rule the payroll sum uses, so the two reconcile.
     c.env.DB.prepare(
       `${REIMBURSEMENT_SELECT}
-        WHERE r.status <> 'pending' AND r.created_at >= ? AND r.created_at < ?
+        WHERE r.status <> 'pending'
+          AND (r.period = ? OR (r.period IS NULL AND r.created_at >= ? AND r.created_at < ?))
         ORDER BY r.created_at DESC`
     )
-      .bind(cycle.start, cycle.payDate)
+      .bind(period, cycle.start, cycle.payDate)
       .all<ReimbursementWithName>(),
     c.env.DB.prepare(
       `SELECT d.*, e.name AS employee_name, a.name AS created_by_name

@@ -4,6 +4,7 @@ import type { AppEnv } from "../auth";
 import type { ReimbursementInput } from "../bills";
 import { requireAdmin, requireEmployee, requireFounder } from "../auth";
 import { deleteBills, putBill, readReimbursementInput } from "../bills";
+import { currentPeriod } from "../payslip";
 import type {
   Attendance,
   Employee,
@@ -37,11 +38,15 @@ async function insertReimbursement(
   approvedBy: number | null,
 ): Promise<Reimbursement | null> {
   const bill = input.bill ? await putBill(c, employeeId, input.bill) : null;
+  // Pin the cycle: the one the caller named (HR filing against the cycle on
+  // screen), else the one today falls in — which is the same bucket this row's
+  // created_at would have landed in, so an employee's own filing is unchanged.
+  const period = input.period ?? currentPeriod();
   try {
     const result = await c.env.DB.prepare(
       `INSERT INTO reimbursements (employee_id, amount, note, bill_key, bill_name, bill_type, bill_size,
-                                   status, decided_at, decided_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${approvedBy === null ? "NULL" : "datetime('now')"}, ?)`
+                                   status, decided_at, decided_by, period)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${approvedBy === null ? "NULL" : "datetime('now')"}, ?, ?)`
     )
       .bind(
         employeeId,
@@ -53,6 +58,7 @@ async function insertReimbursement(
         bill?.size ?? null,
         approvedBy === null ? "pending" : "approved",
         approvedBy,
+        period,
       )
       .run();
 

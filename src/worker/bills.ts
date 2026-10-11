@@ -70,7 +70,15 @@ export interface ReimbursementInput {
   amount: number;
   note: string;
   bill: File | null;
+  /**
+   * The pay cycle ("YYYY-MM") this expense is billed to, when the caller pins
+   * one (HR filing against the cycle they're viewing). Undefined when none is
+   * given — the route then defaults it to the cycle today falls in.
+   */
+  period?: string;
 }
+
+const PERIOD_RE = /^\d{4}-\d{2}$/;
 
 /**
  * Reads the reimbursement form as multipart/form-data — the only shape that can
@@ -82,6 +90,7 @@ export async function readReimbursementInput(
 ): Promise<ReimbursementInput | { error: string }> {
   let amount: unknown;
   let note: unknown;
+  let period: unknown;
   let bill: File | null = null;
 
   if ((c.req.header("content-type") ?? "").includes("multipart/form-data")) {
@@ -90,18 +99,23 @@ export async function readReimbursementInput(
     // Every form field arrives as a string, so amount needs converting back.
     amount = Number(form.get("amount"));
     note = form.get("note");
+    period = form.get("period");
     const picked = form.get("bill");
     if (picked instanceof File && picked.size > 0) bill = picked;
   } else {
     const body = await c.req
-      .json<{ amount?: number; note?: string }>()
-      .catch(() => ({}) as { amount?: number; note?: string });
+      .json<{ amount?: number; note?: string; period?: string }>()
+      .catch(() => ({}) as { amount?: number; note?: string; period?: string });
     amount = body.amount;
     note = body.note;
+    period = body.period;
   }
 
   if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
     return { error: "amount must be a positive number" };
+  }
+  if (period != null && period !== "" && !(typeof period === "string" && PERIOD_RE.test(period))) {
+    return { error: "period must be in YYYY-MM form" };
   }
   if (bill) {
     if (!c.env.BILLS) return { error: "Bill uploads are temporarily unavailable" };
@@ -113,6 +127,7 @@ export async function readReimbursementInput(
     amount: Math.round(amount),
     note: typeof note === "string" ? note.trim() : "",
     bill,
+    ...(typeof period === "string" && PERIOD_RE.test(period) ? { period } : {}),
   };
 }
 
