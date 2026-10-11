@@ -64,6 +64,13 @@ export interface Reimbursement {
   bill_size: number | null;
   /** Only 'approved' rows are counted into a cycle's pay. */
   status: ReimbursementStatus;
+  /**
+   * The pay cycle ("YYYY-MM") this expense is billed under — which cycle it
+   * counts towards and shows in. Pinned on insert (the cycle HR is looking at,
+   * or the one today falls in when filed by an employee). Null only on rows
+   * that predate the column; those fall back to their created_at bucket.
+   */
+  period: string | null;
   /** Share of this request that is paid — 50 or 100, set per request by HR. */
   percent: number;
   /** When HR decided; null while still pending. */

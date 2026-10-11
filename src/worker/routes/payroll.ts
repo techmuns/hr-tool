@@ -3,7 +3,7 @@ import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
 import { sendRawEmail } from "../email";
 import type { PayslipRow } from "../payslip";
-import { payslipHtml, payslipSubject, payCycle } from "../payslip";
+import { payslipHtml, payslipSubject, payCycle, currentPeriod, previousPeriod } from "../payslip";
 import { syncPayroll, reimbursedFromEntries } from "../payrollCalc";
 import type { AdminPayrollRow } from "../types";
 
@@ -12,6 +12,33 @@ const app = new Hono<AppEnv>();
 app.use("*", requireEmployee, requireAdmin);
 
 const PERIOD_RE = /^\d{4}-\d{2}$/;
+
+/**
+ * The cycle the Payroll (and Reimb. Notes) tab should open on.
+ *
+ * Not simply "the cycle today falls in". Cycles run 11th-to-10th and pay on the
+ * 11th, so on the 11th the current cycle rolls to the fresh next-month one —
+ * and landing there hides the just-closed cycle whose dues are being settled
+ * that very day. HR saw the month "jump to November" before October was paid.
+ *
+ * So: open on the active cycle, UNLESS the cycle that just closed still has
+ * generated-but-unpaid dues — then hold on it until it's fully marked paid.
+ * Read-only and one step back on purpose: it surfaces the cycle being settled
+ * now without reaching back into older history or writing (syncing) anything.
+ */
+app.get("/admin/payroll/default-period", async (c) => {
+  const active = currentPeriod();
+  const justClosed = previousPeriod(active);
+
+  const state = await c.env.DB.prepare(
+    "SELECT COUNT(*) AS generated, COUNT(paid_at) AS paid FROM payroll WHERE period = ?"
+  )
+    .bind(justClosed)
+    .first<{ generated: number; paid: number }>();
+
+  const hasUnpaidDues = (state?.generated ?? 0) > 0 && (state?.paid ?? 0) < (state?.generated ?? 0);
+  return c.json({ period: hasUnpaidDues ? justClosed : active });
+});
 
 app.get("/admin/payroll", async (c) => {
   const period = c.req.query("period");

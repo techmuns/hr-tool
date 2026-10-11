@@ -83,15 +83,18 @@ export async function unpaidLeaveDaysByEmployee(db: D1Database, cycle: PayCycle)
 }
 
 /**
- * Approved reimbursements filed during the cycle, per employee.
+ * Approved reimbursements billed to the cycle, per employee.
  *
  * Pending and rejected rows are excluded — that exclusion is the whole point of
- * the approval queue. created_at is "YYYY-MM-DD HH:MM:SS", so a plain string
- * range works: the upper bound is the pay date itself, which excludes it and
- * everything after.
+ * the approval queue. A row's cycle is its pinned `period` (see migration 0039);
+ * only a row that predates that column falls back to the created_at window, so
+ * old data keeps the exact bucket it had before periods were pinned. created_at
+ * is "YYYY-MM-DD HH:MM:SS", so a plain string range works: the upper bound is
+ * the pay date itself, which excludes it and everything after.
  */
 export async function approvedReimbursementsByEmployee(
   db: D1Database,
+  period: string,
   cycle: PayCycle,
 ): Promise<Map<number, number>> {
   const rows = await db
@@ -99,10 +102,11 @@ export async function approvedReimbursementsByEmployee(
       // Each request pays at its own percent (default 100). Rounded per row
       // before summing, so one request at 50% and another at 100% don't blend.
       `SELECT employee_id, COALESCE(SUM(ROUND(amount * percent / 100.0)), 0) AS total FROM reimbursements
-       WHERE status = 'approved' AND created_at >= ? AND created_at < ?
+       WHERE status = 'approved'
+         AND (period = ? OR (period IS NULL AND created_at >= ? AND created_at < ?))
        GROUP BY employee_id`
     )
-    .bind(cycle.start, cycle.payDate)
+    .bind(period, cycle.start, cycle.payDate)
     .all<{ employee_id: number; total: number }>();
 
   return new Map((rows.results ?? []).map((r) => [r.employee_id, r.total]));
@@ -188,7 +192,7 @@ export async function syncPayroll(db: D1Database, period: string): Promise<void>
   const [employees, unpaidLeaveDays, approvedReimbursements, manualDeductions, breakupRows] = await Promise.all([
     db.prepare("SELECT * FROM employees WHERE on_payroll = 1 AND archived = 0").all<Employee>(),
     unpaidLeaveDaysByEmployee(db, cycle),
-    approvedReimbursementsByEmployee(db, cycle),
+    approvedReimbursementsByEmployee(db, period, cycle),
     manualDeductionsByEmployee(db, period),
     db.prepare("SELECT employee_id, entries, full_reimbursement FROM reimbursement_breakups WHERE period = ?")
       .bind(period)

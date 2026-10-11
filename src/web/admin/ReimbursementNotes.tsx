@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -31,6 +31,11 @@ function rowReimbursed(r: EditRow): number {
  */
 export function ReimbursementNotes() {
   const [period, setPeriod] = useState(periodForDate(todayISODate()));
+  // Open on the same cycle Payroll does — the just-closed one while its dues are
+  // unpaid, not the fresh one the 11th rolls into — so a breakup logged "for
+  // October" doesn't quietly default to November. Resolved once, before loading.
+  const [periodResolved, setPeriodResolved] = useState(false);
+  const userPickedPeriod = useRef(false);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [breakups, setBreakups] = useState<Record<number, ReimbursementBreakup>>({});
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -56,8 +61,25 @@ export function ReimbursementNotes() {
   }, [period]);
 
   useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ period: string }>("/admin/payroll/default-period")
+      .then((r) => {
+        if (!cancelled && !userPickedPeriod.current && r.period) setPeriod(r.period);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setPeriodResolved(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!periodResolved) return;
     load();
-  }, [load]);
+  }, [load, periodResolved]);
 
   // A line saved before per-line percentages existed carries no `percent`. Read
   // last month's per-line `full` boolean if present (true → 100%, false → 50%),
@@ -131,7 +153,14 @@ export function ReimbursementNotes() {
     <Card
       title="Reimbursement notes"
       actions={
-        <select value={period} onChange={(e) => setPeriod(e.target.value)} style={{ width: "auto" }}>
+        <select
+          value={period}
+          onChange={(e) => {
+            userPickedPeriod.current = true;
+            setPeriod(e.target.value);
+          }}
+          style={{ width: "auto" }}
+        >
           {months.map((m) => (
             <option key={m.value} value={m.value}>
               {m.label}

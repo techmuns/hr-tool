@@ -114,6 +114,26 @@ export function payDueDate(period: string): string {
   return payCycle(period).payDate;
 }
 
+/**
+ * The cycle today falls into, in UTC — the server-side counterpart of the
+ * client's periodForDate(todayISODate()). created_at and every cycle window are
+ * computed in UTC (payCycle uses Date.UTC), so the "today" that decides a
+ * freshly filed reimbursement's cycle is UTC too, and matches where its
+ * created_at would otherwise bucket it.
+ */
+export function currentPeriod(): string {
+  return periodForDate(new Date().toISOString().slice(0, 10));
+}
+
+/** The period one calendar month before `period` ("2026-11" -> "2026-10"). */
+export function previousPeriod(period: string): string {
+  const [year, month] = period.split("-").map(Number);
+  if (!year || !month) return period;
+  // month is 1-based; month - 2 is the previous month 0-based. Date normalises
+  // January back into December of the prior year.
+  return new Date(Date.UTC(year, month - 2, 1)).toISOString().slice(0, 7);
+}
+
 /** "2026-08" -> "11 Jul – 10 Aug 2026", the span the payslip actually covers. */
 export function cycleLabel(period: string): string {
   const { start, end } = payCycle(period);

@@ -4,9 +4,9 @@ import { Button } from "../components/ui/Button";
 import { Tag } from "../components/ui/Tag";
 import { BILLS_ENABLED, BillLink } from "../components/Bill";
 import { confirmDialog } from "../confirm";
-import { formatDate, todayISODate } from "../date";
+import { formatDate } from "../date";
 import { formatINR } from "../money";
-import { cycleLabel, periodForDate } from "../../worker/payslip";
+import { cycleLabel } from "../../worker/payslip";
 import type { CycleAdjustments, Employee, ReimbursementStatus } from "../types";
 
 /**
@@ -58,10 +58,6 @@ export function AdjustmentsSection({
 
   // Adjustments are a payroll concept, so only people payroll actually runs for.
   const payrollEmployees = useMemo(() => employees.filter((e) => e.on_payroll !== 0), [employees]);
-
-  // Which cycle a reimbursement filed right now would fall into — not
-  // necessarily the one being viewed, since the month picker moves freely.
-  const todaysPeriod = periodForDate(todayISODate());
 
   const pending = data?.pending ?? [];
   const decided = data?.reimbursements ?? [];
@@ -133,6 +129,9 @@ export function AdjustmentsSection({
       await api.post(`/admin/employees/${employeeId}/reimbursements`, {
         amount: Math.round(rupees * 100),
         note: reimNote.trim(),
+        // Bill it to the cycle on screen, not the one today happens to fall in,
+        // so an October expense entered on the 11th stays in October.
+        period,
       });
       setReimEmployee("");
       setReimAmount("");
@@ -247,9 +246,8 @@ export function AdjustmentsSection({
             />
           </div>
           <p className="field-hint">
-            Approved on the spot, since you&rsquo;re the one adding it. A reimbursement is dated by when it is filed,
-            so this one lands in the {cycleLabel(todaysPeriod)} cycle
-            {todaysPeriod === period ? " — the one shown above." : `, not the ${cycleLabel(period)} cycle shown above.`}
+            Approved on the spot, since you&rsquo;re the one adding it. It&rsquo;s billed to the{" "}
+            {cycleLabel(period)} cycle shown above — switch the month at the top to file it against a different cycle.
           </p>
           <div className="inline-form-actions">
             <Button onClick={() => setAddingReim(false)} disabled={reimBusy}>
