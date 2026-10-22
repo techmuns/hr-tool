@@ -3,6 +3,7 @@ import type { AppEnv } from "../auth";
 import { requireAdmin, requireEmployee } from "../auth";
 import { nowISO, todayISODate } from "../db";
 import { runAttendanceReminders, sendRemindersToEmployees } from "../attendanceReminders";
+import { sendLeaveNotification } from "../leaveNotification";
 import type { Attendance, AttendanceStatus, AttendanceWithName } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -142,6 +143,15 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
   const wfh =
     body.wfh && ((status === "present" && !inOffice && !halfDay) || status === "absent") ? 1 : 0;
 
+  // What this day was before HR touched it — used to fire the leave heads-up
+  // only on the transition INTO leave, so re-saving a day that's already leave
+  // (or adjusting its flags) doesn't send a duplicate email.
+  const prior = await c.env.DB.prepare(
+    "SELECT status FROM attendance WHERE employee_id = ? AND work_date = ?",
+  )
+    .bind(body.employee_id, body.work_date)
+    .first<{ status: AttendanceStatus }>();
+
   await c.env.DB.prepare(
     `INSERT INTO attendance (employee_id, work_date, clock_in, clock_out, status, in_office, wfh, half_day)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -161,6 +171,32 @@ app.post("/admin/attendance", requireAdmin, async (c) => {
       halfDay,
     )
     .run();
+
+  // HR marking a day as leave is the HR-side equivalent of an employee applying
+  // for leave (which goes through POST /leave and sends its own heads-up). Send
+  // the same notification here so it fires however the leave was recorded. Only
+  // on a fresh leave day, and fire-and-forget so a slow/failed email never
+  // blocks the attendance save (mirrors the employee route).
+  if (status === "leave" && prior?.status !== "leave") {
+    const emp = await c.env.DB.prepare("SELECT name, email FROM employees WHERE id = ?")
+      .bind(body.employee_id)
+      .first<{ name: string; email: string }>();
+    if (emp) {
+      c.executionCtx.waitUntil(
+        sendLeaveNotification(c.env, {
+          employeeName: emp.name,
+          employeeEmail: emp.email ?? "",
+          dates: [body.work_date],
+          paid: 0,
+          unpaid: 0,
+          reason: "",
+        }).catch((err) => {
+          const message = err instanceof Error ? err.message : "Send failed";
+          console.error(`Leave notification failed for ${emp.name}:`, message);
+        }),
+      );
+    }
+  }
 
   const row = await c.env.DB.prepare("SELECT * FROM attendance WHERE employee_id = ? AND work_date = ?")
     .bind(body.employee_id, body.work_date)
