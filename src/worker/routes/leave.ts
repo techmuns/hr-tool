@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../auth";
 import { requireEmployee } from "../auth";
 import { businessDaysFrom, businessDaysInRange } from "../db";
+import { sendLeaveNotification } from "../leaveNotification";
 import type { LeaveRequest, LeaveType } from "../types";
 
 const app = new Hono<AppEnv>();
@@ -98,6 +99,24 @@ app.post("/leave", async (c) => {
       .bind(employee.id, date)
       .run();
   }
+
+  // Heads-up email to HR that leave was applied. Fire-and-forget: marking leave
+  // is already done and must succeed for the employee even if the email can't go
+  // out, so a send failure is logged, not surfaced (mirrors the attendance
+  // reminder job). waitUntil keeps the Worker alive until the fetch settles.
+  c.executionCtx.waitUntil(
+    sendLeaveNotification(c.env, {
+      employeeName: employee.name,
+      employeeEmail: employee.email,
+      dates,
+      paid: paidCount,
+      unpaid: unpaidCount,
+      reason,
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : "Send failed";
+      console.error(`Leave notification failed for ${employee.name}:`, message);
+    }),
+  );
 
   return c.json({ dates, paid: paidCount, unpaid: unpaidCount });
 });
